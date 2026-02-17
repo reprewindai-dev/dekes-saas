@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 // ============================================================================
@@ -337,6 +338,18 @@ model LeadEvent {
   createdAt DateTime  @default(now())
 
   @@index([leadId, type])
+}
+
+model CarbonReport {
+  id        String   @id @default(cuid())
+
+  queryId   String
+  actualCO2 Float
+  reportedAt DateTime @default(now())
+  raw       Json     @default("{}")
+
+  @@index([queryId])
+  @@index([reportedAt])
 }
 
 model Template {

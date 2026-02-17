@@ -18,9 +18,9 @@ echo "Generating Prisma client..."
 npx prisma@5.20.0 generate
 
 echo "Running Prisma migrations (deploy)..."
-npx prisma@5.20.0 migrate deploy || {
+npx prisma@5.20.0 migrate deploy --schema=./prisma/schema.prisma || {
   echo "Migration deploy failed, attempting db push as fallback..."
-  npx prisma@5.20.0 db push --accept-data-loss
+  npx prisma@5.20.0 db push --schema=./prisma/schema.prisma --accept-data-loss
 }
 
 echo "Building app..."

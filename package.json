@@ -8,8 +8,10 @@
     "install:app": "npm ci --prefix dekes-saas",
     "build:app": "npm run build --prefix dekes-saas",
     "start:app": "npm run start --prefix dekes-saas",
+    "lint:app": "npm run lint --prefix dekes-saas",
     "postinstall": "npm run install:app",
     "build": "npm run build:app",
-    "start": "npm run start:app"
+    "start": "npm run start:app",
+    "lint": "npm run lint:app"
   }
 }

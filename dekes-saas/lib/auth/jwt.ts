@@ -11,14 +11,6 @@ function getJwtSecret(): string {
   return secret
 }
 
-function getSessionSecret(): string {
-  const secret = process.env.SESSION_SECRET || (isProd ? '' : 'dev-session-secret')
-  if (isProd && !secret) {
-    throw new Error('Missing SESSION_SECRET in production')
-  }
-  return secret
-}
-
 export interface JWTPayload {
   userId: string
   email: string
@@ -38,7 +30,6 @@ export function verifyToken(token: string): JWTPayload | null {
 }
 
 export async function createSession(userId: string, ipAddress?: string, userAgent?: string) {
-  getSessionSecret()
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) throw new Error('User not found')
 

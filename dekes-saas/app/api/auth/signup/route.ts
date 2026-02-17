@@ -104,9 +104,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Email already registered' }, { status: 400 })
       }
 
-      const isProd = process.env.NODE_ENV === 'production'
-      const message = isProd ? 'Database error' : `Database error (${error.code})`
-      return NextResponse.json({ error: message }, { status: 500 })
+      // Include Prisma error code in all environments so production issues can be diagnosed quickly.
+      return NextResponse.json({ error: `Database error (${error.code})` }, { status: 500 })
     }
 
     const message = error instanceof Error ? error.message : String(error)

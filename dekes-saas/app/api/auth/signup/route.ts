@@ -4,11 +4,17 @@ import { hashPassword, validatePassword } from '@/lib/auth/password'
 import { createSession } from '@/lib/auth/jwt'
 import { z } from 'zod'
 
+const emptyToUndefined = (value: unknown) => {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  return trimmed.length === 0 ? undefined : trimmed
+}
+
 const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
-  name: z.string().min(1).optional(),
-  organizationName: z.string().min(1).optional(),
+  name: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  organizationName: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 })
 
 export async function POST(request: Request) {
@@ -65,7 +71,7 @@ export async function POST(request: Request) {
       request.headers.get('user-agent') || undefined
     )
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       user: {
         id: organization.owner.id,
         email: organization.owner.email,
@@ -74,6 +80,18 @@ export async function POST(request: Request) {
       },
       token,
     })
+
+    res.cookies.set({
+      name: 'DEKES_SESSION',
+      value: token,
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7,
+    })
+
+    return res
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors[0].message }, { status: 400 })

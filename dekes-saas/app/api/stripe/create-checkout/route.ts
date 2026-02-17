@@ -1,11 +1,18 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { stripe, PLANS } from '@/lib/stripe/client'
 import { prisma } from '@/lib/db'
 import { validateSession } from '@/lib/auth/jwt'
 
 export async function POST(request: Request) {
   try {
-    const token = request.headers.get('authorization')?.replace('Bearer ', '')
+    if (!stripe) {
+      return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 })
+    }
+
+    const token =
+      request.headers.get('authorization')?.replace('Bearer ', '') ||
+      cookies().get('DEKES_SESSION')?.value
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -15,8 +22,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { plan } = await request.json()
-    if (!['STARTER', 'PROFESSIONAL', 'ENTERPRISE'].includes(plan)) {
+    const body = await request.json()
+    const plan = body?.plan as unknown
+    if (typeof plan !== 'string' || !['STARTER', 'PROFESSIONAL', 'ENTERPRISE'].includes(plan)) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 })
     }
 
@@ -29,7 +37,7 @@ export async function POST(request: Request) {
     }
 
     const planConfig = PLANS[plan as keyof typeof PLANS]
-    if (!planConfig.stripePriceId) {
+    if (!('stripePriceId' in planConfig) || !planConfig.stripePriceId) {
       return NextResponse.json({ error: 'Plan not configured' }, { status: 400 })
     }
 

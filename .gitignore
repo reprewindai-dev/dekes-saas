@@ -1,0 +1,19 @@
+.env
+.env.*
+!.env.example
+
+node_modules/
+.next/
+out/
+dist/
+
+.vscode/
+.DS_Store
+
+*.log
+
+# Prisma
+prisma/dev.db*
+
+# Turbo/Next cache
+.turbo/

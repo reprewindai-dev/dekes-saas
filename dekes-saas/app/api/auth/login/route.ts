@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyPassword } from '@/lib/auth/password'
 import { createSession } from '@/lib/auth/jwt'
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       request.headers.get('user-agent') || undefined
     )
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       user: {
         id: user.id,
         email: user.email,
@@ -58,6 +58,18 @@ export async function POST(request: Request) {
       },
       token,
     })
+
+    res.cookies.set({
+      name: 'DEKES_SESSION',
+      value: token,
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7,
+    })
+
+    return res
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors[0].message }, { status: 400 })

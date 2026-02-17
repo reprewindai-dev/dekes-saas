@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { hashPassword, validatePassword } from '@/lib/auth/password'
 import { createSession } from '@/lib/auth/jwt'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 
 const emptyToUndefined = (value: unknown) => {
   if (typeof value !== 'string') return value
@@ -97,10 +98,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.errors[0].message }, { status: 400 })
     }
 
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      // Unique constraint violation (e.g. email already exists)
+      if (error.code === 'P2002') {
+        return NextResponse.json({ error: 'Email already registered' }, { status: 400 })
+      }
+
+      const isProd = process.env.NODE_ENV === 'production'
+      const message = isProd ? 'Database error' : `Database error (${error.code})`
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
+
     const message = error instanceof Error ? error.message : String(error)
     console.error('Signup error:', message)
 
-    if (message.includes('Missing JWT_SECRET') || message.includes('Missing SESSION_SECRET')) {
+    if (message.includes('Missing JWT_SECRET')) {
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
+
+    // bcrypt/native module failures are common on some deploy environments
+    if (message.toLowerCase().includes('bcrypt')) {
+      const isProd = process.env.NODE_ENV === 'production'
+      return NextResponse.json(
+        { error: isProd ? 'Password hashing error' : `Password hashing error: ${message}` },
+        { status: 500 }
+      )
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
       return NextResponse.json({ error: message }, { status: 500 })
     }
 

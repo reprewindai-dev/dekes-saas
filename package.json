@@ -1,0 +1,15 @@
+{
+  "name": "dekes-saas-root",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "install:app": "npm ci --prefix dekes-saas",
+    "build:app": "npm run build --prefix dekes-saas",
+    "start:app": "npm run start --prefix dekes-saas",
+    "postinstall": "npm run install:app",
+    "build": "npm run build:app",
+    "start": "npm run start:app"
+  }
+}

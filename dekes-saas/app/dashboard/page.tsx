@@ -11,19 +11,16 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({ leads: 0, qualified: 0, won: 0, conversion: 0 })
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (!token) {
-      router.push('/auth/login')
-      return
-    }
-
-    // Validate session and fetch data
-    fetch('/api/user/me', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.json())
+    fetch('/api/user/me', { credentials: 'include' })
+      .then(async (res) => {
+        const data = await res.json().catch(() => null)
+        if (!res.ok) {
+          return { error: true, status: res.status, data }
+        }
+        return data
+      })
       .then((data) => {
-        if (data.error) {
+        if (!data || data.error) {
           router.push('/auth/login')
         } else {
           setUser(data.user)
@@ -58,8 +55,9 @@ export default function DashboardPage() {
               <span className="text-sm text-slate-400">{user?.email}</span>
               <button
                 onClick={() => {
-                  localStorage.removeItem('token')
-                  router.push('/')
+                  fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+                    .catch(() => {})
+                    .finally(() => router.push('/'))
                 }}
                 className="text-sm text-slate-400 hover:text-white transition"
               >
@@ -128,7 +126,10 @@ export default function DashboardPage() {
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-8">
           <h2 className="text-xl font-bold text-white mb-6">Quick Actions</h2>
           <div className="grid md:grid-cols-2 gap-4">
-            <button className="p-4 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-lg text-left transition group">
+            <button
+              onClick={() => router.push('/runs/new')}
+              className="p-4 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-lg text-left transition group"
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-semibold text-white mb-1">Run New Search</div>
@@ -138,7 +139,10 @@ export default function DashboardPage() {
               </div>
             </button>
 
-            <button className="p-4 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded-lg text-left transition group">
+            <button
+              onClick={() => router.push('/leads')}
+              className="p-4 bg-green-500/10 hover:bg-green-500/20 border border-green-500/20 rounded-lg text-left transition group"
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-semibold text-white mb-1">Review Leads</div>

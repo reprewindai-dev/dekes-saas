@@ -23,6 +23,7 @@ export default function LoginPage() {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
@@ -32,8 +33,6 @@ export default function LoginPage() {
       if (!res.ok) {
         throw new Error(result.error || 'Failed to log in')
       }
-
-      localStorage.setItem('token', result.token)
       router.push('/dashboard')
     } catch (err: any) {
       setError(err.message)

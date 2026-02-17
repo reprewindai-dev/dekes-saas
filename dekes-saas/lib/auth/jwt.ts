@@ -1,8 +1,23 @@
 import jwt from 'jsonwebtoken'
 import { prisma } from '../db'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production'
-const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-session-secret'
+const isProd = process.env.NODE_ENV === 'production'
+
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET || (isProd ? '' : 'dev-secret-change-in-production')
+  if (isProd && !secret) {
+    throw new Error('Missing JWT_SECRET in production')
+  }
+  return secret
+}
+
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET || (isProd ? '' : 'dev-session-secret')
+  if (isProd && !secret) {
+    throw new Error('Missing SESSION_SECRET in production')
+  }
+  return secret
+}
 
 export interface JWTPayload {
   userId: string
@@ -11,18 +26,19 @@ export interface JWTPayload {
 }
 
 export function generateToken(payload: JWTPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' })
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '7d' })
 }
 
 export function verifyToken(token: string): JWTPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload
+    return jwt.verify(token, getJwtSecret()) as JWTPayload
   } catch {
     return null
   }
 }
 
 export async function createSession(userId: string, ipAddress?: string, userAgent?: string) {
+  getSessionSecret()
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) throw new Error('User not found')
 

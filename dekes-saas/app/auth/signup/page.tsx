@@ -15,16 +15,28 @@ export default function SignupPage() {
     setError('')
 
     const formData = new FormData(e.currentTarget)
-    const data = {
-      email: formData.get('email') as string,
-      password: formData.get('password') as string,
-      name: formData.get('name') as string,
-      organizationName: formData.get('organizationName') as string,
+    const email = (formData.get('email') as string) || ''
+    const password = (formData.get('password') as string) || ''
+    const name = ((formData.get('name') as string) || '').trim()
+    const organizationName = ((formData.get('organizationName') as string) || '').trim()
+
+    const data: {
+      email: string
+      password: string
+      name?: string
+      organizationName?: string
+    } = {
+      email,
+      password,
     }
+
+    if (name) data.name = name
+    if (organizationName) data.organizationName = organizationName
 
     try {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
@@ -34,8 +46,6 @@ export default function SignupPage() {
       if (!res.ok) {
         throw new Error(result.error || 'Failed to sign up')
       }
-
-      localStorage.setItem('token', result.token)
       router.push('/dashboard')
     } catch (err: any) {
       setError(err.message)

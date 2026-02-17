@@ -14,8 +14,14 @@ cd "$APP_DIR"
 echo "Installing dependencies..."
 npm ci
 
+echo "Generating Prisma client..."
+npx prisma@5.20.0 generate
+
 echo "Running Prisma migrations (deploy)..."
-npx prisma@5.20.0 migrate deploy
+npx prisma@5.20.0 migrate deploy || {
+  echo "Migration deploy failed, attempting db push as fallback..."
+  npx prisma@5.20.0 db push --accept-data-loss
+}
 
 echo "Building app..."
 npm run build

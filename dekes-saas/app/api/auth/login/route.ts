@@ -74,7 +74,18 @@ export async function POST(request: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors[0].message }, { status: 400 })
     }
-    console.error('Login error:', error)
+
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('Login error:', message)
+
+    if (
+      message.includes('Missing JWT_SECRET') ||
+      message.includes('Missing SESSION_SECRET') ||
+      message.includes('STRIPE_SECRET_KEY')
+    ) {
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
+
     return NextResponse.json({ error: 'Failed to log in' }, { status: 500 })
   }
 }

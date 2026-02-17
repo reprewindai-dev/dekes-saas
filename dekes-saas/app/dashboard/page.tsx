@@ -24,7 +24,7 @@ export default function DashboardPage() {
           router.push('/auth/login')
         } else {
           setUser(data.user)
-          setStats(data.stats || stats)
+          setStats((prev) => data.stats || prev)
         }
       })
       .catch(() => router.push('/auth/login'))
@@ -72,7 +72,7 @@ export default function DashboardPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Welcome back, {user?.name || 'there'}!</h1>
-          <p className="text-slate-400">Here's what's happening with your lead generation</p>
+          <p className="text-slate-400">Here&apos;s what&apos;s happening with your lead generation</p>
         </div>
 
         {/* Stats */}

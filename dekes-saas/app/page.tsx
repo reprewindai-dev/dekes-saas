@@ -25,7 +25,7 @@ export default function LandingPage() {
         features: [
           '100 qualified leads',
           '5 active scans',
-          'Basic intent scoring',
+          'Basic scoring',
           'Email support',
         ],
       },
@@ -38,8 +38,7 @@ export default function LandingPage() {
         features: [
           '500 qualified leads',
           '20 active scans',
-          'Advanced intent detection',
-          'Multi-signal scoring',
+          'Advanced scoring',
           'Contact enrichment',
           'Priority support',
         ],

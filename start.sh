@@ -20,7 +20,10 @@ npx prisma@5.20.0 generate
 echo "Running Prisma migrations (deploy)..."
 npx prisma@5.20.0 migrate deploy --schema=./prisma/schema.prisma --skip-generate || {
   echo "Migration deploy failed, attempting db push as fallback..."
-  npx prisma@5.20.0 db push --schema=./prisma/schema.prisma --skip-generate --accept-data-loss
+  npx prisma@5.20.0 db push --schema=./prisma/schema.prisma --skip-generate --accept-data-loss || {
+    echo "db push also failed, forcing schema reset..."
+    npx prisma@5.20.0 db push --schema=./prisma/schema.prisma --skip-generate --force-reset
+  }
 }
 
 echo "Building app..."

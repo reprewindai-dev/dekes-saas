@@ -2,6 +2,7 @@ import { createHash } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { fetchSearchResults } from '@/lib/search/fallback'
+import { classifyLeadIntent } from '@/lib/ai/groq'
 
 export type LeadGenerationOptions = {
   query: string
@@ -56,17 +57,44 @@ export async function generateLeadsFromSearch(
 
   const leadsPayload: Prisma.LeadUncheckedCreateInput[] = []
 
-  searchResults.forEach((result: any, idx: number) => {
+  const created: Prisma.LeadUncheckedCreateInput[] = []
+
+  // Process leads sequentially to handle async AI classification properly
+  for (const [idx, result] of searchResults.entries()) {
     const link = result.link || result.displayed_link
-    if (!link) return
+    if (!link) continue
 
     const canonicalUrl = link.trim()
-    if (!canonicalUrl) return
+    if (!canonicalUrl) continue
 
     const canonicalHash = hashCanonical(canonicalUrl, options.organizationId)
     const baseScore = scoreFromPosition(idx)
 
-    leadsPayload.push({
+    // Get AI-powered intent classification
+    let intentClassification
+    try {
+      intentClassification = await classifyLeadIntent(
+        result.title || '',
+        result.snippet || '',
+        canonicalUrl
+      )
+    } catch (error) {
+      console.warn('AI classification failed, using fallback:', error)
+      intentClassification = {
+        intentClass: baseScore > 70 ? 'HIGH_INTENT' : 'MEDIUM_INTENT',
+        confidence: Math.min(0.99, Math.max(0.4, baseScore / 100)),
+        buyerType: 'B2B_SaaS',
+        urgencySignals: {
+          immediate: baseScore > 80,
+          timeline: 'unknown',
+          budgetIndicators: [],
+        },
+        painPoints: [],
+        serviceFit: baseScore / 100,
+      }
+    }
+
+    const leadPayload: Prisma.LeadUncheckedCreateInput = {
       organizationId: options.organizationId,
       queryId: options.queryId,
       runId: options.runId,
@@ -82,47 +110,52 @@ export async function generateLeadsFromSearch(
       urgencyVelocity: secondaryScore(baseScore, -2),
       budgetSignals: secondaryScore(baseScore, -5),
       fitPrecision: secondaryScore(baseScore, 1),
-      buyerType: 'B2B_SaaS',
-      intentClass: baseScore > 70 ? 'HIGH_INTENT' : 'MEDIUM_INTENT',
-      intentConfidence: Math.min(0.99, Math.max(0.4, baseScore / 100)),
-      rush12HourEligible: baseScore > 80,
-      painTags: [],
-      serviceTags: [],
+      buyerType: intentClassification.buyerType,
+      intentClass: intentClassification.intentClass,
+      intentConfidence: intentClassification.confidence,
+      rush12HourEligible: intentClassification.urgencySignals.immediate,
+      painTags: intentClassification.painPoints,
+      serviceTags: intentClassification.urgencySignals.budgetIndicators,
       meta: {
         serpPosition: result.position ?? idx + 1,
         serpSource: result.source ?? (result.provider === 'apify' ? 'apify_google' : 'google'),
         gl,
         provider: result.provider,
+        aiClassification: intentClassification,
+        urgencyTimeline: intentClassification.urgencySignals.timeline,
+        serviceFit: intentClassification.serviceFit,
       } as Prisma.JsonObject,
-    })
-  })
+    }
 
-  const created: Prisma.LeadUncheckedCreateInput[] = []
-
-  for (const payload of leadsPayload) {
     try {
       await prisma.lead.upsert({
         where: {
           organizationId_canonicalHash: {
-            organizationId: payload.organizationId,
-            canonicalHash: payload.canonicalHash,
+            organizationId: leadPayload.organizationId,
+            canonicalHash: leadPayload.canonicalHash,
           },
         },
         update: {
-          score: payload.score,
-          intentDepth: payload.intentDepth,
-          urgencyVelocity: payload.urgencyVelocity,
-          budgetSignals: payload.budgetSignals,
-          fitPrecision: payload.fitPrecision,
-          snippet: payload.snippet,
-          title: payload.title,
-          runId: payload.runId,
-          queryId: payload.queryId,
-          meta: payload.meta,
+          score: leadPayload.score,
+          intentDepth: leadPayload.intentDepth,
+          urgencyVelocity: leadPayload.urgencyVelocity,
+          budgetSignals: leadPayload.budgetSignals,
+          fitPrecision: leadPayload.fitPrecision,
+          snippet: leadPayload.snippet,
+          title: leadPayload.title,
+          runId: leadPayload.runId,
+          queryId: leadPayload.queryId,
+          meta: leadPayload.meta,
+          buyerType: leadPayload.buyerType,
+          intentClass: leadPayload.intentClass,
+          intentConfidence: leadPayload.intentConfidence,
+          rush12HourEligible: leadPayload.rush12HourEligible,
+          painTags: leadPayload.painTags,
+          serviceTags: leadPayload.serviceTags,
         },
-        create: payload,
+        create: leadPayload,
       })
-      created.push(payload)
+      created.push(leadPayload)
     } catch (error) {
       console.error('Lead upsert failed', error)
     }

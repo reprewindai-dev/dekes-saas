@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/db'
 import { recordMetric } from '@/lib/metrics/recorder'
+import { redisCache } from '@/lib/upstash/redis'
+import { classifyLeadIntent, type IntentClassification } from '@/lib/ai/groq'
 import type { JobResult } from '@/lib/jobs/types'
 
 const BATCH_SIZE = 25
@@ -54,6 +56,7 @@ export async function runLeadEnrichmentJob(): Promise<JobResult> {
     return { success: true, processed: 0 }
   }
 
+  // Mark as enriching to prevent duplicate processing
   await Promise.all(
     leads.map((lead) =>
       prisma.lead.update({
@@ -63,30 +66,79 @@ export async function runLeadEnrichmentJob(): Promise<JobResult> {
     )
   )
 
+  // Process each lead with AI-powered enrichment
   await Promise.all(
-    leads.map((lead) => {
-      const companySize = scoreToCompanySize(lead.score)
-      const funding = deriveFundingStage(lead.score)
-      const techStack = detectTechStack(lead.snippet)
-      const linkedin = deriveLinkedInHandle(lead.canonicalUrl)
-      const updatedScore = Math.min(98, Math.round(lead.score + techStack.length * 2))
+    leads.map(async (lead) => {
+      try {
+        // Check cache for existing AI classification
+        const cacheKey = `ai_enrichment:${lead.canonicalHash}`
+        let aiClassification: IntentClassification | null = await redisCache.get(cacheKey)
 
-      return prisma.lead.update({
-        where: { id: lead.id },
-        data: {
-          enrichmentStatus: 'ENRICHED',
-          enrichedAt: new Date(),
-          score: updatedScore,
-          enrichmentMeta: {
-            ...(lead.enrichmentMeta as Record<string, unknown>),
-            companySize,
-            funding,
-            linkedin,
-            techStack,
-            enrichedBy: 'autonomous-worker',
+        if (!aiClassification) {
+          // Get fresh AI classification
+          aiClassification = await classifyLeadIntent(
+            lead.title || '',
+            lead.snippet || '',
+            lead.canonicalUrl
+          )
+          
+          // Cache for 24 hours
+          await redisCache.set(cacheKey, aiClassification, 86400)
+        }
+
+        const companySize = scoreToCompanySize(lead.score)
+        const funding = deriveFundingStage(lead.score)
+        const techStack = detectTechStack(lead.snippet)
+        const linkedin = deriveLinkedInHandle(lead.canonicalUrl)
+        
+        // Enhanced scoring with AI insights
+        const aiBoost = aiClassification.serviceFit * 10
+        const techBoost = techStack.length * 2
+        const updatedScore = Math.min(98, Math.round(lead.score + aiBoost + techBoost))
+
+        return prisma.lead.update({
+          where: { id: lead.id },
+          data: {
+            enrichmentStatus: 'ENRICHED',
+            enrichedAt: new Date(),
+            score: updatedScore,
+            buyerType: aiClassification.buyerType,
+            intentClass: aiClassification.intentClass,
+            intentConfidence: aiClassification.confidence,
+            rush12HourEligible: aiClassification.urgencySignals.immediate,
+            painTags: aiClassification.painPoints,
+            serviceTags: aiClassification.urgencySignals.budgetIndicators,
+            enrichmentMeta: {
+              ...(lead.enrichmentMeta as Record<string, unknown>),
+              companySize,
+              funding,
+              linkedin,
+              techStack,
+              enrichedBy: 'autonomous-worker',
+              aiClassification,
+              urgencyTimeline: aiClassification.urgencySignals.timeline,
+              serviceFit: aiClassification.serviceFit,
+              aiBoost: Math.round(aiBoost),
+              techBoost,
+            },
           },
-        },
-      })
+        })
+      } catch (error) {
+        console.error(`Failed to enrich lead ${lead.id}:`, error)
+        
+        // Mark as failed but don't block the batch
+        return prisma.lead.update({
+          where: { id: lead.id },
+          data: {
+            enrichmentStatus: 'FAILED',
+            enrichmentMeta: {
+              ...(lead.enrichmentMeta as Record<string, unknown>),
+              error: error instanceof Error ? error.message : 'Unknown error',
+              failedAt: new Date(),
+            },
+          },
+        })
+      }
     })
   )
 

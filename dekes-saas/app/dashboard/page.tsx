@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Target, TrendingUp, Users, Zap, ArrowRight } from 'lucide-react'
+import EcobeDashboardMetrics from '@/components/ecobe/dashboard-metrics'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -121,6 +122,9 @@ export default function DashboardPage() {
             <div className="text-sm text-slate-400">Conversion Rate</div>
           </div>
         </div>
+
+        {/* ECOBE Pipeline Metrics */}
+        <EcobeDashboardMetrics />
 
         {/* Quick Actions */}
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-8">

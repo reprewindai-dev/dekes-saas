@@ -21,9 +21,9 @@ export type SerpApiSearchOptions = {
 
 const SERPAPI_ENDPOINT = process.env.SERPAPI_API_URL || 'https://serpapi.com/search.json'
 const DEFAULT_LOCATION = process.env.SERPAPI_LOCATION || undefined
-const DEFAULT_GL = process.env.SERPAPI_GL || undefined
-const DEFAULT_HL = process.env.SERPAPI_HL || undefined
-const DEFAULT_NUM = Number(process.env.SERPAPI_NUM || '10')
+const DEFAULT_GL = process.env.SERPAPI_GL || 'us'
+const DEFAULT_HL = process.env.SERPAPI_HL || 'en'
+const DEFAULT_NUM = Number(process.env.SERPAPI_NUM || '20')
 
 export async function fetchSerpOrganicResults(
   options: SerpApiSearchOptions

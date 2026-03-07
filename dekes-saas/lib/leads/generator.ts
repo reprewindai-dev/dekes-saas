@@ -1,7 +1,7 @@
 import { createHash } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
-import { fetchSerpOrganicResults } from '@/lib/search/serpapi'
+import { fetchSearchResults } from '@/lib/search/fallback'
 
 export type LeadGenerationOptions = {
   query: string
@@ -48,7 +48,7 @@ export async function generateLeadsFromSearch(
   options: LeadGenerationOptions
 ): Promise<LeadGenerationResult> {
   const gl = normalizeGl(options.selectedRegion || options.regions[0])
-  const serpResults = await fetchSerpOrganicResults({
+  const searchResults = await fetchSearchResults({
     query: options.query,
     gl,
     num: Math.min(options.estimatedResults, 100),
@@ -56,7 +56,7 @@ export async function generateLeadsFromSearch(
 
   const leadsPayload: Prisma.LeadUncheckedCreateInput[] = []
 
-  serpResults.forEach((result, idx) => {
+  searchResults.forEach((result: any, idx: number) => {
     const link = result.link || result.displayed_link
     if (!link) return
 
@@ -70,7 +70,7 @@ export async function generateLeadsFromSearch(
       organizationId: options.organizationId,
       queryId: options.queryId,
       runId: options.runId,
-      source: SOURCE,
+      source: result.provider === 'apify' ? 'APIFY_GOOGLE' : 'SERPAPI_GOOGLE',
       sourceUrl: canonicalUrl,
       canonicalUrl,
       canonicalHash,
@@ -90,8 +90,9 @@ export async function generateLeadsFromSearch(
       serviceTags: [],
       meta: {
         serpPosition: result.position ?? idx + 1,
-        serpSource: result.source ?? 'google',
+        serpSource: result.source ?? (result.provider === 'apify' ? 'apify_google' : 'google'),
         gl,
+        provider: result.provider,
       } as Prisma.JsonObject,
     })
   })
@@ -128,7 +129,7 @@ export async function generateLeadsFromSearch(
   }
 
   return {
-    requested: serpResults.length,
+    requested: searchResults.length,
     attempted: leadsPayload.length,
     inserted: created.length,
     leads: created,

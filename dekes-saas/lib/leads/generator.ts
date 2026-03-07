@@ -2,7 +2,8 @@ import { createHash } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { fetchSearchResults } from '@/lib/search/fallback'
-import { classifyLeadIntent } from '@/lib/ai/groq'
+import { classifyLeadIntent, type IntentClassification } from '@/lib/ai/groq'
+import type { UTMData } from '@/lib/utm'
 
 export type LeadGenerationOptions = {
   query: string
@@ -12,6 +13,7 @@ export type LeadGenerationOptions = {
   regions: string[]
   selectedRegion?: string
   estimatedResults: number
+  utmData?: UTMData
 }
 
 export type LeadGenerationResult = {
@@ -116,6 +118,12 @@ export async function generateLeadsFromSearch(
       rush12HourEligible: intentClassification.urgencySignals.immediate,
       painTags: intentClassification.painPoints,
       serviceTags: intentClassification.urgencySignals.budgetIndicators,
+      // UTM Attribution
+      utm_source: options.utmData?.utm_source,
+      utm_medium: options.utmData?.utm_medium,
+      utm_campaign: options.utmData?.utm_campaign,
+      utm_term: options.utmData?.utm_term,
+      utm_content: options.utmData?.utm_content,
       meta: {
         serpPosition: result.position ?? idx + 1,
         serpSource: result.source ?? (result.provider === 'apify' ? 'apify_google' : 'google'),
@@ -124,6 +132,7 @@ export async function generateLeadsFromSearch(
         aiClassification: intentClassification,
         urgencyTimeline: intentClassification.urgencySignals.timeline,
         serviceFit: intentClassification.serviceFit,
+        utmCapturedAt: options.utmData?.captured_at,
       } as Prisma.JsonObject,
     }
 

@@ -21,7 +21,7 @@ export type SearchOptions = {
   num?: number
 }
 
-const SEARCH_FALLBACK = process.env.SEARCH_FALLBACK === 'true'
+const SEARCH_FALLBACK = process.env.SEARCH_FALLBACK || 'false'
 const SEARCH_PROVIDER = process.env.SEARCH_PROVIDER || 'serpapi'
 
 async function trySerpApi(options: SearchOptions): Promise<SearchResult[]> {
@@ -60,7 +60,7 @@ export async function fetchSearchResults(
     results = await trySerpApi(options)
     
     // Fallback to Apify if enabled and primary failed
-    if (SEARCH_FALLBACK && results.length === 0) {
+    if (SEARCH_FALLBACK === 'apify' && results.length === 0) {
       console.log('Primary search (SerpApi) failed, trying fallback (Apify)')
       results = await tryApify(options)
     }
@@ -68,7 +68,7 @@ export async function fetchSearchResults(
     results = await tryApify(options)
     
     // Fallback to SerpApi if enabled and primary failed
-    if (SEARCH_FALLBACK && results.length === 0) {
+    if (SEARCH_FALLBACK === 'serpapi' && results.length === 0) {
       console.log('Primary search (Apify) failed, trying fallback (SerpApi)')
       results = await trySerpApi(options)
     }

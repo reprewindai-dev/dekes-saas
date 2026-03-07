@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { prisma } from '@/lib/db'
 import { validateSession } from '@/lib/auth/jwt'
+import { getStoredUTMData } from '@/lib/utm'
 
 export async function GET(request: Request) {
   try {
@@ -22,6 +23,20 @@ export async function GET(request: Request) {
       where: { organizationId },
       orderBy: { createdAt: 'desc' },
       take: 100,
+      select: {
+        id: true,
+        title: true,
+        snippet: true,
+        score: true,
+        intentClass: true,
+        status: true,
+        createdAt: true,
+        utm_source: true,
+        utm_medium: true,
+        utm_campaign: true,
+        utm_term: true,
+        utm_content: true,
+      },
     })
 
     return NextResponse.json({ leads })

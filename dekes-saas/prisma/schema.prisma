@@ -302,6 +302,13 @@ model Lead {
   intentClass       String?
   intentConfidence  Float?
 
+  // UTM Attribution fields
+  utmSource         String?    @map("utm_source")
+  utmMedium         String?    @map("utm_medium")
+  utmCampaign       String?    @map("utm_campaign")
+  utmTerm           String?    @map("utm_term")
+  utmContent        String?    @map("utm_content")
+
   meta              Json       @default("{}")
 
   status            LeadStatus @default(OUTREACH_READY)
@@ -337,6 +344,8 @@ model Lead {
   @@index([queryId])
   @@index([organizationId])
   @@index([enrichmentStatus])
+  @@index([utmSource])
+  @@index([utmCampaign])
 }
 
 enum LeadEnrichmentStatus {

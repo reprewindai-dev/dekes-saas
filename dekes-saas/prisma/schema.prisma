@@ -120,6 +120,7 @@ model Organization {
   leads     Lead[]
   queries   Query[]
   runs      Run[]
+  ecobeHandoffs EcobeHandoff[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -203,6 +204,7 @@ model Query {
   runs          Run[]
   leads         Lead[]
   attempts      OutreachAttempt[]
+  ecobeHandoffs EcobeHandoff[]
 
   runsCount     Int        @default(0)
   leadsCount    Int        @default(0)
@@ -243,6 +245,7 @@ model Run {
   error        String?
 
   leads        Lead[]
+  ecobeHandoffs EcobeHandoff[]
   
   @@index([organizationId])
   @@index([queryId])
@@ -315,6 +318,14 @@ model Lead {
 
   events            LeadEvent[]
   attempts          OutreachAttempt[]
+  ecobeHandoffs     EcobeHandoff[]
+  enrichmentStatus  LeadEnrichmentStatus @default(PENDING)
+  enrichedAt        DateTime?
+  enrichmentMeta    Json        @default("{}")
+  isDuplicate       Boolean     @default(false)
+  duplicateOfLeadId String?
+  duplicateLead     Lead?       @relation("LeadDuplicates", fields: [duplicateOfLeadId], references: [id], onDelete: SetNull)
+  duplicateChildren Lead[]      @relation("LeadDuplicates")
 
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
@@ -325,6 +336,29 @@ model Lead {
   @@index([entityId])
   @@index([queryId])
   @@index([organizationId])
+  @@index([enrichmentStatus])
+}
+
+enum LeadEnrichmentStatus {
+  PENDING
+  ENRICHING
+  ENRICHED
+  FAILED
+}
+
+enum EcobeHandoffStatus {
+  PENDING
+  SENT
+  ACCEPTED
+  FAILED
+  CONVERTED
+}
+
+enum EcobeHandoffType {
+  PROSPECT
+  TENANT_CREATE
+  DEMO_TRIGGER
+  WORKLOAD_SIGNAL
 }
 
 model LeadEvent {
@@ -433,4 +467,45 @@ model ConversionPattern {
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model OperationalMetric {
+  id        String   @id @default(cuid())
+  name      String
+  scope     String?
+  value     Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
+}
+
+model EcobeHandoff {
+  id             String             @id @default(cuid())
+  organizationId String
+  leadId         String?
+  queryId        String?
+  runId          String?
+  externalOrgId  String?
+  externalLeadId String?
+  handoffType    EcobeHandoffType   @default(PROSPECT)
+  status         EcobeHandoffStatus  @default(PENDING)
+  payloadJson    Json                @default("{}")
+  responseJson   Json?
+  errorMessage   String?
+  qualificationReason String?
+  qualificationScore Int?
+  attempts       Int                @default(0)
+  lastAttemptAt  DateTime?
+  sentAt         DateTime?
+  failedAt       DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead           Lead?              @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  query          Query?             @relation(fields: [queryId], references: [id], onDelete: SetNull)
+  run            Run?               @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([createdAt])
 }

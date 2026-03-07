@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { cookies } from 'next/headers'
 import { validateSession } from '@/lib/auth/jwt'
-import { ecobeOptimizeQuery } from '@/lib/ecobe/client'
+import { ecobeOptimizeQuery, ecobeReportCarbonUsage } from '@/lib/ecobe/client'
 import { prisma } from '@/lib/db'
+import { generateLeadsFromSearch } from '@/lib/leads/generator'
 
 const runSchema = z.object({
   queryId: z.string().min(1).optional(),
@@ -60,14 +61,33 @@ export async function POST(request: Request) {
       },
     })
 
-    const optimization = await ecobeOptimizeQuery({
-      query: {
-        id: ensuredQuery.id,
-        query: data.query,
-        estimatedResults: data.estimatedResults,
-      },
-      carbonBudget: data.carbonBudget,
+    let optimization: Awaited<ReturnType<typeof ecobeOptimizeQuery>>
+    try {
+      optimization = await ecobeOptimizeQuery({
+        query: {
+          id: ensuredQuery.id,
+          query: data.query,
+          estimatedResults: data.estimatedResults,
+        },
+        carbonBudget: data.carbonBudget,
+        regions: data.regions,
+      })
+    } catch (error) {
+      console.warn('ECOBE optimize unavailable, falling back to default region', error)
+      optimization = {
+        selectedRegion: data.regions[0],
+        fallback: true,
+      }
+    }
+
+    const leadGeneration = await generateLeadsFromSearch({
+      query: data.query,
+      organizationId,
+      queryId: ensuredQuery.id,
+      runId: run.id,
       regions: data.regions,
+      selectedRegion: typeof optimization.selectedRegion === 'string' ? optimization.selectedRegion : undefined,
+      estimatedResults: data.estimatedResults,
     })
 
     const finishedRun = await prisma.run.update({
@@ -75,9 +95,29 @@ export async function POST(request: Request) {
       data: {
         finishedAt: new Date(),
         status: 'FINISHED',
-        resultCount: data.estimatedResults,
-        leadCount: 0,
+        resultCount: leadGeneration.requested,
+        leadCount: leadGeneration.inserted,
       },
+    })
+
+    const estimatedEnergyKwh = (data.estimatedResults / 1000) * 0.05
+    const estimatedCO2 =
+      typeof optimization.estimatedCO2 === 'number' ? optimization.estimatedCO2 : null
+    const carbonIntensity =
+      estimatedEnergyKwh > 0 && estimatedCO2 !== null
+        ? estimatedCO2 / estimatedEnergyKwh
+        : null
+    const actualEnergyKwh = (leadGeneration.requested / 1000) * 0.05
+    const fallbackCarbonIntensity = 500 // gCO2/kWh baseline
+    const actualCO2 =
+      actualEnergyKwh * (carbonIntensity ?? fallbackCarbonIntensity)
+
+    // Report actual CO2 usage back to ECOBE (best-effort)
+    ecobeReportCarbonUsage({
+      queryId: ensuredQuery.id,
+      actualCO2,
+    }).catch((error) => {
+      console.error('Failed to report ECOBE carbon usage', error)
     })
 
     return NextResponse.json({
@@ -91,8 +131,11 @@ export async function POST(request: Request) {
         status: finishedRun.status,
         startedAt: finishedRun.startedAt,
         finishedAt: finishedRun.finishedAt,
+        resultCount: finishedRun.resultCount,
+        leadCount: finishedRun.leadCount,
       },
       optimization,
+      leadGeneration,
     })
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {

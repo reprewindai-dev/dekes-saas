@@ -61,24 +61,28 @@ export async function POST(request: Request) {
       },
     })
 
-    let optimization: Awaited<ReturnType<typeof ecobeOptimizeQuery>>
-    try {
-      optimization = await ecobeOptimizeQuery({
-        query: {
-          id: ensuredQuery.id,
-          query: data.query,
-          estimatedResults: data.estimatedResults,
-        },
-        carbonBudget: data.carbonBudget,
-        regions: data.regions,
-      })
-    } catch (error) {
-      console.warn('ECOBE optimize unavailable, falling back to default region', error)
-      optimization = {
+    const optimizationErrorContext: Record<string, unknown> = {}
+    const optimizationResult = await ecobeOptimizeQuery({
+      query: {
+        id: ensuredQuery.id,
+        query: data.query,
+        estimatedResults: data.estimatedResults,
+      },
+      carbonBudget: data.carbonBudget,
+      regions: data.regions,
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
+      optimizationErrorContext.error = message
+      console.warn('ECOBE optimize unavailable, falling back to default region', message)
+      return null
+    })
+
+    const optimization =
+      optimizationResult ?? ({
         selectedRegion: data.regions[0],
         fallback: true,
-      }
-    }
+        error: optimizationErrorContext.error,
+      } as Awaited<ReturnType<typeof ecobeOptimizeQuery>>)
 
     const leadGeneration = await generateLeadsFromSearch({
       query: data.query,

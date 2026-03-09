@@ -83,7 +83,11 @@ export async function POST(request: Request) {
         delayToleranceMinutes: data.delayToleranceMinutes,
       })
     } catch (err) {
-      console.warn('ECOBE routing unavailable, proceeding without routing decision', err)
+      console.warn('[leads/run] ECOBE routing unavailable — proceeding without routing decision', {
+        organizationId,
+        runId: run.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
 
     // ── 4. Handle delay: persist state and schedule a retry job ───────────────
@@ -123,7 +127,11 @@ export async function POST(request: Request) {
           retries: 2,
         })
       } catch (schedErr) {
-        console.error('Failed to schedule delayed run via QStash', schedErr)
+        console.error('[leads/run] Failed to schedule delayed run via QStash', {
+          runId: run.id,
+          decisionId: routing.decisionId,
+          error: schedErr instanceof Error ? schedErr.message : String(schedErr),
+        })
       }
 
       return NextResponse.json(
@@ -217,7 +225,11 @@ export async function POST(request: Request) {
     const actualCO2 = actualEnergyKwh * (carbonIntensity ?? fallbackCarbonIntensity)
 
     ecobeReportCarbonUsage({ queryId: ensuredQuery.id, actualCO2 }).catch((err) =>
-      console.error('Failed to report ECOBE carbon usage', err),
+      console.error('[leads/run] Failed to report ECOBE carbon usage', {
+        queryId: ensuredQuery.id,
+        actualCO2,
+        error: err instanceof Error ? err.message : String(err),
+      }),
     )
 
     // ── 10. Post-run feedback to ECOBE routing API (best-effort) ─────────────
@@ -227,7 +239,13 @@ export async function POST(request: Request) {
         executionRegion,
         durationMinutes,
         status: 'success',
-      }).catch((err) => console.error('Failed to send ECOBE workload completion', err))
+      }).catch((err) =>
+        console.error('[leads/run] Failed to send ECOBE workload completion', {
+          decisionId: routing.decisionId,
+          runId: run.id,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      )
     }
 
     return NextResponse.json({
@@ -259,7 +277,7 @@ export async function POST(request: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.errors[0].message }, { status: 400 })
     }
-    console.error('Leads run error:', error instanceof Error ? error.message : String(error))
+    console.error('[leads/run] Unhandled error:', error instanceof Error ? error.message : String(error))
     return NextResponse.json({ error: 'Failed to run leads' }, { status: 500 })
   }
 }

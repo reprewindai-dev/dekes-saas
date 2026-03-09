@@ -3,8 +3,14 @@ import { z } from 'zod'
 import { cookies } from 'next/headers'
 import { validateSession } from '@/lib/auth/jwt'
 import { ecobeOptimizeQuery, ecobeReportCarbonUsage } from '@/lib/ecobe/client'
+import {
+  ecobeRouteWorkload,
+  ecobeCompleteWorkload,
+  type EcobeRouteResponse,
+} from '@/lib/ecobe/router'
 import { prisma } from '@/lib/db'
 import { generateLeadsFromSearch } from '@/lib/leads/generator'
+import { getQstashClient } from '@/lib/upstash/qstash'
 
 const runSchema = z.object({
   queryId: z.string().min(1).optional(),
@@ -12,6 +18,8 @@ const runSchema = z.object({
   estimatedResults: z.number().int().positive().default(100),
   carbonBudget: z.number().positive().default(10000),
   regions: z.array(z.string()).min(1).default(['US-CAL-CISO', 'FR', 'DE']),
+  /** Minutes the workload can be delayed before it must run. Defaults to 60. */
+  delayToleranceMinutes: z.number().int().nonnegative().default(60),
 })
 
 export async function POST(request: Request) {
@@ -33,6 +41,7 @@ export async function POST(request: Request) {
 
     const organizationId = session.user.organizationId
 
+    // ── 1. Upsert query ────────────────────────────────────────────────────────
     const query = data.queryId
       ? await prisma.query.findFirst({
           where: { id: data.queryId, organizationId },
@@ -53,6 +62,7 @@ export async function POST(request: Request) {
           },
         })
 
+    // ── 2. Create run (STARTED) ────────────────────────────────────────────────
     const run = await prisma.run.create({
       data: {
         organizationId,
@@ -61,6 +71,98 @@ export async function POST(request: Request) {
       },
     })
 
+    // ── 3. ECOBE carbon-aware routing ─────────────────────────────────────────
+    let routing: EcobeRouteResponse | null = null
+    try {
+      routing = await ecobeRouteWorkload({
+        organizationId,
+        source: 'DEKES',
+        workloadType: 'lead_generation_batch',
+        candidateRegions: data.regions,
+        durationMinutes: Math.ceil(data.estimatedResults / 100) * 2, // ~2 min per 100 results
+        delayToleranceMinutes: data.delayToleranceMinutes,
+      })
+    } catch (err) {
+      console.warn('ECOBE routing unavailable, proceeding without routing decision', err)
+    }
+
+    // ── 4. Handle delay: persist state and schedule a retry job ───────────────
+    if (routing?.action === 'delay') {
+      const retryAfterMinutes = routing.predicted_clean_window?.expected_minutes ?? 60
+
+      await prisma.run.update({
+        where: { id: run.id },
+        data: {
+          status: 'DELAYED',
+          ecobeDecisionId: routing.decisionId,
+          ecobeRegion: routing.predicted_clean_window?.region ?? null,
+          ecobeCarbonDelta: routing.carbonDelta ?? null,
+          ecobeQualityTier: routing.qualityTier ?? null,
+          ecobePolicyAction: routing.policyAction ?? null,
+          ecobeDecisionTimestamp: new Date(routing.timestamp),
+        },
+      })
+
+      // Schedule QStash retry after the clean window
+      try {
+        const client = getQstashClient()
+        await client.publish({
+          url: `${process.env.NEXT_PUBLIC_APP_URL}/api/jobs/run-delayed`,
+          method: 'POST',
+          body: JSON.stringify({
+            runId: run.id,
+            queryId: ensuredQuery.id,
+            query: data.query,
+            estimatedResults: data.estimatedResults,
+            regions: data.regions,
+            organizationId,
+            decisionId: routing.decisionId,
+            selectedRegion: routing.predicted_clean_window?.region ?? data.regions[0],
+          }),
+          delay: retryAfterMinutes * 60,
+          retries: 2,
+        })
+      } catch (schedErr) {
+        console.error('Failed to schedule delayed run via QStash', schedErr)
+      }
+
+      return NextResponse.json(
+        {
+          organizationId,
+          query: { id: ensuredQuery.id, query: ensuredQuery.query },
+          run: { id: run.id, status: 'DELAYED' },
+          routing: {
+            action: 'delay',
+            decisionId: routing.decisionId,
+            retryAfterMinutes,
+            cleanWindowRegion: routing.predicted_clean_window?.region,
+          },
+        },
+        { status: 202 },
+      )
+    }
+
+    // ── 5. Determine execution region (execute / reroute / fallback) ───────────
+    const executionRegion =
+      (routing?.action === 'reroute' ? routing.target : routing?.selectedRegion) ??
+      data.regions[0]
+
+    // Persist routing metadata before workload runs
+    if (routing) {
+      await prisma.run.update({
+        where: { id: run.id },
+        data: {
+          ecobeDecisionId: routing.decisionId,
+          ecobeRegion: executionRegion,
+          ecobeCarbonDelta: routing.carbonDelta ?? null,
+          ecobeQualityTier: routing.qualityTier ?? null,
+          ecobePolicyAction: routing.policyAction ?? null,
+          ecobeDecisionTimestamp: new Date(routing.timestamp),
+        },
+      })
+    }
+
+    // ── 6. Legacy ECOBE optimize (kept for CO₂ estimation) ───────────────────
     let optimization: Awaited<ReturnType<typeof ecobeOptimizeQuery>>
     try {
       optimization = await ecobeOptimizeQuery({
@@ -74,22 +176,24 @@ export async function POST(request: Request) {
       })
     } catch (error) {
       console.warn('ECOBE optimize unavailable, falling back to default region', error)
-      optimization = {
-        selectedRegion: data.regions[0],
-        fallback: true,
-      }
+      optimization = { selectedRegion: executionRegion, fallback: true }
     }
 
+    // ── 7. Generate leads ─────────────────────────────────────────────────────
+    const runStart = Date.now()
     const leadGeneration = await generateLeadsFromSearch({
       query: data.query,
       organizationId,
       queryId: ensuredQuery.id,
       runId: run.id,
       regions: data.regions,
-      selectedRegion: typeof optimization.selectedRegion === 'string' ? optimization.selectedRegion : undefined,
+      selectedRegion: executionRegion,
       estimatedResults: data.estimatedResults,
     })
 
+    const durationMinutes = Math.ceil((Date.now() - runStart) / 60_000) || 1
+
+    // ── 8. Finish run ─────────────────────────────────────────────────────────
     const finishedRun = await prisma.run.update({
       where: { id: run.id },
       data: {
@@ -100,6 +204,7 @@ export async function POST(request: Request) {
       },
     })
 
+    // ── 9. Report CO₂ to ECOBE (best-effort) ─────────────────────────────────
     const estimatedEnergyKwh = (data.estimatedResults / 1000) * 0.05
     const estimatedCO2 =
       typeof optimization.estimatedCO2 === 'number' ? optimization.estimatedCO2 : null
@@ -108,24 +213,26 @@ export async function POST(request: Request) {
         ? estimatedCO2 / estimatedEnergyKwh
         : null
     const actualEnergyKwh = (leadGeneration.requested / 1000) * 0.05
-    const fallbackCarbonIntensity = 500 // gCO2/kWh baseline
-    const actualCO2 =
-      actualEnergyKwh * (carbonIntensity ?? fallbackCarbonIntensity)
+    const fallbackCarbonIntensity = 500
+    const actualCO2 = actualEnergyKwh * (carbonIntensity ?? fallbackCarbonIntensity)
 
-    // Report actual CO2 usage back to ECOBE (best-effort)
-    ecobeReportCarbonUsage({
-      queryId: ensuredQuery.id,
-      actualCO2,
-    }).catch((error) => {
-      console.error('Failed to report ECOBE carbon usage', error)
-    })
+    ecobeReportCarbonUsage({ queryId: ensuredQuery.id, actualCO2 }).catch((err) =>
+      console.error('Failed to report ECOBE carbon usage', err),
+    )
+
+    // ── 10. Post-run feedback to ECOBE routing API (best-effort) ─────────────
+    if (routing?.decisionId) {
+      ecobeCompleteWorkload({
+        decision_id: routing.decisionId,
+        executionRegion,
+        durationMinutes,
+        status: 'success',
+      }).catch((err) => console.error('Failed to send ECOBE workload completion', err))
+    }
 
     return NextResponse.json({
       organizationId,
-      query: {
-        id: ensuredQuery.id,
-        query: ensuredQuery.query,
-      },
+      query: { id: ensuredQuery.id, query: ensuredQuery.query },
       run: {
         id: finishedRun.id,
         status: finishedRun.status,
@@ -134,6 +241,17 @@ export async function POST(request: Request) {
         resultCount: finishedRun.resultCount,
         leadCount: finishedRun.leadCount,
       },
+      routing: routing
+        ? {
+            action: routing.action,
+            decisionId: routing.decisionId,
+            selectedRegion: executionRegion,
+            carbonDelta: routing.carbonDelta,
+            qualityTier: routing.qualityTier,
+            policyAction: routing.policyAction,
+            decisionTimestamp: routing.timestamp,
+          }
+        : null,
       optimization,
       leadGeneration,
     })

@@ -244,9 +244,17 @@ model Run {
   status       String    @default("STARTED")
   error        String?
 
+  // ECOBE carbon-aware routing metadata
+  ecobeDecisionId        String?
+  ecobeRegion            String?
+  ecobeCarbonDelta       Float?
+  ecobeQualityTier       String?
+  ecobePolicyAction      String?
+  ecobeDecisionTimestamp DateTime?
+
   leads        Lead[]
   ecobeHandoffs EcobeHandoff[]
-  
+
   @@index([organizationId])
   @@index([queryId])
 }

@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-
-type Optimization = any
+import RunRoutingCard, { type RunRoutingData } from '@/components/ecobe/run-routing-card'
 
 type RunResponse = {
   organizationId: string
   query: { id: string; query: string }
-  run: { id: string; status: string; startedAt: string; finishedAt: string | null }
-  optimization: Optimization
+  run: { id: string; status: string; startedAt: string; finishedAt: string | null; resultCount?: number; leadCount?: number }
+  routing: RunRoutingData | null
+  optimization?: any
 }
 
 export default function NewRunPage() {
@@ -17,17 +17,20 @@ export default function NewRunPage() {
   const [estimatedResults, setEstimatedResults] = useState(100)
   const [carbonBudget, setCarbonBudget] = useState(10000)
   const [regions, setRegions] = useState('US-CAL-CISO,FR,DE')
+  const [delayToleranceMinutes, setDelayToleranceMinutes] = useState(60)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<RunResponse | null>(null)
 
-  const regionList = useMemo(() => {
-    return regions
-      .split(',')
-      .map((r) => r.trim())
-      .filter(Boolean)
-  }, [regions])
+  const regionList = useMemo(
+    () =>
+      regions
+        .split(',')
+        .map((r) => r.trim())
+        .filter(Boolean),
+    [regions],
+  )
 
   async function runSearch() {
     setLoading(true)
@@ -44,11 +47,12 @@ export default function NewRunPage() {
           estimatedResults,
           carbonBudget,
           regions: regionList,
+          delayToleranceMinutes,
         }),
       })
 
       const data = await res.json().catch(() => null)
-      if (!res.ok) {
+      if (!res.ok && res.status !== 202) {
         throw new Error(data?.error || 'Failed to run search')
       }
 
@@ -59,6 +63,8 @@ export default function NewRunPage() {
       setLoading(false)
     }
   }
+
+  const isDelayed = result?.run?.status === 'DELAYED'
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
@@ -84,7 +90,8 @@ export default function NewRunPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Run a Lead Generation Search</h1>
           <p className="text-slate-400">
-            This runs your query through ECOBE optimization and records a run in the database.
+            Your workload is routed through ECOBE for carbon-aware region selection before
+            execution.
           </p>
         </div>
 
@@ -109,16 +116,22 @@ export default function NewRunPage() {
 
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Estimated Results</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Estimated Results
+                </label>
                 <input
                   type="number"
                   value={estimatedResults}
-                  onChange={(e) => setEstimatedResults(parseInt(e.target.value || '0', 10) || 0)}
+                  onChange={(e) =>
+                    setEstimatedResults(parseInt(e.target.value || '0', 10) || 0)
+                  }
                   className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">Carbon Budget</label>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Carbon Budget
+                </label>
                 <input
                   type="number"
                   value={carbonBudget}
@@ -128,15 +141,35 @@ export default function NewRunPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Candidate Regions (comma-separated)</label>
-              <input
-                type="text"
-                value={regions}
-                onChange={(e) => setRegions(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
-              />
-              <div className="mt-2 text-xs text-slate-500">Example: US-CAL-CISO,FR,DE</div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Candidate Regions (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={regions}
+                  onChange={(e) => setRegions(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                />
+                <div className="mt-2 text-xs text-slate-500">Example: US-CAL-CISO,FR,DE</div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Delay Tolerance (minutes)
+                </label>
+                <input
+                  type="number"
+                  value={delayToleranceMinutes}
+                  onChange={(e) =>
+                    setDelayToleranceMinutes(parseInt(e.target.value || '0', 10) || 0)
+                  }
+                  className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                />
+                <div className="mt-2 text-xs text-slate-500">
+                  Max time ECOBE may defer this run for a cleaner grid
+                </div>
+              </div>
             </div>
 
             <button
@@ -150,37 +183,52 @@ export default function NewRunPage() {
         </div>
 
         {result && (
-          <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <div className="text-white font-semibold">Run Complete</div>
-                <div className="text-slate-400 text-sm">Run ID: {result.run.id}</div>
+          <div className="space-y-4">
+            {/* Status header */}
+            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div>
+                  <div className="text-white font-semibold">
+                    {isDelayed ? 'Run Queued — Clean Window Pending' : 'Run Complete'}
+                  </div>
+                  <div className="text-slate-400 text-sm">Run ID: {result.run.id}</div>
+                  {isDelayed && result.routing?.retryAfterMinutes != null && (
+                    <div className="text-amber-400 text-sm mt-1">
+                      ECOBE will retry in ~{result.routing.retryAfterMinutes} min when the grid
+                      is cleaner.
+                    </div>
+                  )}
+                </div>
+                {!isDelayed && (
+                  <Link
+                    href="/leads"
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-semibold transition"
+                  >
+                    Go to Leads
+                  </Link>
+                )}
               </div>
-              <Link
-                href="/leads"
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm font-semibold transition"
-              >
-                Go to Leads
-              </Link>
+
+              {!isDelayed && (
+                <div className="mt-6 grid md:grid-cols-3 gap-4">
+                  <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-lg">
+                    <div className="text-slate-400 text-xs mb-1">Query</div>
+                    <div className="text-white text-sm">{result.query.query}</div>
+                  </div>
+                  <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-lg">
+                    <div className="text-slate-400 text-xs mb-1">Status</div>
+                    <div className="text-white text-sm">{result.run.status}</div>
+                  </div>
+                  <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-lg">
+                    <div className="text-slate-400 text-xs mb-1">Leads Found</div>
+                    <div className="text-white text-sm">{result.run.leadCount ?? '—'}</div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="mt-6 grid md:grid-cols-2 gap-4">
-              <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-lg">
-                <div className="text-slate-400 text-xs mb-1">Query</div>
-                <div className="text-white">{result.query.query}</div>
-              </div>
-              <div className="p-4 bg-slate-950/40 border border-slate-800 rounded-lg">
-                <div className="text-slate-400 text-xs mb-1">Status</div>
-                <div className="text-white">{result.run.status}</div>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <div className="text-slate-300 font-semibold mb-2">Optimization Output</div>
-              <pre className="text-xs text-slate-200 bg-slate-950/40 border border-slate-800 rounded-lg p-4 overflow-x-auto">
-                {JSON.stringify(result.optimization, null, 2)}
-              </pre>
-            </div>
+            {/* Carbon-Aware Routing card */}
+            {result.routing && <RunRoutingCard routing={result.routing} />}
           </div>
         )}
       </main>

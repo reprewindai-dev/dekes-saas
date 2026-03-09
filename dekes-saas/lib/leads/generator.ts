@@ -57,8 +57,6 @@ export async function generateLeadsFromSearch(
     num: Math.min(options.estimatedResults, 100),
   })
 
-  const leadsPayload: Prisma.LeadUncheckedCreateInput[] = []
-
   const created: Prisma.LeadUncheckedCreateInput[] = []
 
   // Process leads sequentially to handle async AI classification properly
@@ -172,7 +170,7 @@ export async function generateLeadsFromSearch(
 
   return {
     requested: searchResults.length,
-    attempted: leadsPayload.length,
+    attempted: searchResults.length,
     inserted: created.length,
     leads: created,
   }

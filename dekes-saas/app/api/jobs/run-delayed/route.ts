@@ -23,14 +23,32 @@ const payloadSchema = z.object({
 })
 
 export async function POST(request: Request) {
+  // Parse body once upfront — request body can only be consumed once
+  let rawBody: unknown
   try {
-    const body = await request.json()
-    const data = payloadSchema.parse(body)
+    rawBody = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  }
 
+  const parsed = payloadSchema.safeParse(rawBody)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 })
+  }
+
+  const data = parsed.data
+
+  try {
     // Guard: skip if the run was already executed or cancelled
     const existing = await prisma.run.findUnique({ where: { id: data.runId } })
-    if (!existing || existing.status !== 'DELAYED') {
-      return NextResponse.json({ skipped: true, reason: 'run not in DELAYED state' })
+    if (!existing) {
+      return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+    }
+    if (existing.status !== 'DELAYED') {
+      return NextResponse.json(
+        { skipped: true, reason: `run is ${existing.status}, not DELAYED` },
+        { status: 409 },
+      )
     }
 
     // Mark as running again
@@ -63,13 +81,15 @@ export async function POST(request: Request) {
       },
     })
 
-    // Post-run feedback (best-effort)
+    // Post-run feedback (best-effort — never block the response)
     ecobeCompleteWorkload({
       decision_id: data.decisionId,
       executionRegion: data.selectedRegion,
       durationMinutes,
       status: 'success',
-    }).catch((err) => console.error('ECOBE complete feedback failed for delayed run', err))
+    }).catch((err) =>
+      console.error('[run-delayed] ECOBE complete feedback failed', { runId: data.runId, err }),
+    )
 
     return NextResponse.json({
       runId: data.runId,
@@ -78,30 +98,26 @@ export async function POST(request: Request) {
       executionRegion: data.selectedRegion,
     })
   } catch (error: unknown) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors[0].message }, { status: 400 })
-    }
+    // Best-effort: report failure back to ECOBE
+    ecobeCompleteWorkload({
+      decision_id: data.decisionId,
+      executionRegion: data.selectedRegion,
+      durationMinutes: 0,
+      status: 'failed',
+    }).catch(() => {})
 
-    // Report failure to ECOBE if we have a decision ID
-    try {
-      const raw = await request.text().catch(() => '{}')
-      const parsed = JSON.parse(raw)
-      if (parsed?.decisionId && parsed?.selectedRegion) {
-        await ecobeCompleteWorkload({
-          decision_id: parsed.decisionId,
-          executionRegion: parsed.selectedRegion,
-          durationMinutes: 0,
-          status: 'failed',
-        })
-      }
-    } catch {
-      // best-effort
-    }
+    // Also mark the run as failed so it doesn't stay in STARTED
+    prisma.run
+      .update({
+        where: { id: data.runId },
+        data: { status: 'FAILED', error: error instanceof Error ? error.message : String(error) },
+      })
+      .catch(() => {})
 
-    console.error(
-      'Delayed run job error:',
-      error instanceof Error ? error.message : String(error),
-    )
+    console.error('[run-delayed] job error', {
+      runId: data.runId,
+      error: error instanceof Error ? error.message : String(error),
+    })
     return NextResponse.json({ error: 'Delayed run failed' }, { status: 500 })
   }
 }

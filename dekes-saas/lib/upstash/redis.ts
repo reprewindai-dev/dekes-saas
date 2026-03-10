@@ -22,15 +22,18 @@ export function getRedis() {
 
 // Redis utilities for common patterns
 export class RedisCache {
-  private redis: Redis
+  private _redis: Redis | null = null
 
-  constructor() {
-    this.redis = getRedis()
+  private get redis(): Redis {
+    if (!this._redis) {
+      this._redis = getRedis()
+    }
+    return this._redis
   }
 
   async get<T>(key: string): Promise<T | null> {
-    const value = await this.redis.get(key)
-    return value ? JSON.parse(value) : null
+    const value = await this.redis.get<string>(key)
+    return value ? (JSON.parse(value) as T) : null
   }
 
   async set(key: string, value: any, ttl?: number): Promise<void> {
@@ -73,7 +76,7 @@ export class RedisCache {
 
     if (current >= limit) {
       const oldestRequest = await this.redis.zrange(key, 0, 0)
-      const resetTime = oldestRequest.length > 0 ? parseInt(oldestRequest[0]) + window * 1000 : now + window * 1000
+      const resetTime = oldestRequest.length > 0 ? parseInt(oldestRequest[0] as string) + window * 1000 : now + window * 1000
       
       return {
         allowed: false,
@@ -83,7 +86,7 @@ export class RedisCache {
     }
 
     // Add current request
-    await this.redis.zadd(key, now, now.toString())
+    await this.redis.zadd(key, { score: now, member: now.toString() })
     await this.redis.expire(key, window)
 
     return {

@@ -3,21 +3,16 @@
 import { useEffect } from 'react'
 import { getUTMWithFallback, hasUTMData } from '@/lib/utm'
 
-interface UTMCaptureProps {
-  onUTMCaptured?: (utmData: any) => void
-}
-
-export function UTMCapture({ onUTMCaptured }: UTMCaptureProps) {
+// No props needed — component writes to window.dekesUTMData directly,
+// which avoids passing function props from a Server Component layout.
+export function UTMCapture() {
   useEffect(() => {
-    // Capture UTM data on component mount
     const utmData = getUTMWithFallback()
-    
-    if (hasUTMData(utmData) && onUTMCaptured) {
-      onUTMCaptured(utmData)
+    if (hasUTMData(utmData)) {
+      window.dekesUTMData = utmData
     }
-  }, [onUTMCaptured])
+  }, [])
 
-  // This component doesn't render anything visible
   return null
 }
 

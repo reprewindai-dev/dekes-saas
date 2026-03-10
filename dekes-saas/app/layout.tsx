@@ -1,11 +1,8 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
 import { initializeJobs } from '@/lib/jobs/init'
 import { UTMCapture } from '@/components/utm/UTMCapture'
 import type { UTMData } from '@/lib/utm'
-
-const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'DEKES - AI Lead Generation',
@@ -25,12 +22,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <UTMCapture onUTMCaptured={(utmData: UTMData) => {
-          // Store UTM data globally for use in API calls
-          if (typeof window !== 'undefined') {
-            window.dekesUTMData = utmData
-          }
-        }} />
+        {/* UTMCapture writes window.dekesUTMData directly — no callback needed */}
+        <UTMCapture />
         {children}
       </body>
     </html>

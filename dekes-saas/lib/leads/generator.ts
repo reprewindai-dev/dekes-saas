@@ -57,8 +57,6 @@ export async function generateLeadsFromSearch(
     num: Math.min(options.estimatedResults, 100),
   })
 
-  const leadsPayload: Prisma.LeadUncheckedCreateInput[] = []
-
   const created: Prisma.LeadUncheckedCreateInput[] = []
 
   // Process leads sequentially to handle async AI classification properly
@@ -118,12 +116,12 @@ export async function generateLeadsFromSearch(
       rush12HourEligible: intentClassification.urgencySignals.immediate,
       painTags: intentClassification.painPoints,
       serviceTags: intentClassification.urgencySignals.budgetIndicators,
-      // UTM Attribution
-      utm_source: options.utmData?.utm_source,
-      utm_medium: options.utmData?.utm_medium,
-      utm_campaign: options.utmData?.utm_campaign,
-      utm_term: options.utmData?.utm_term,
-      utm_content: options.utmData?.utm_content,
+      // UTM Attribution (Prisma camelCase field names map to snake_case columns)
+      utmSource: options.utmData?.utm_source,
+      utmMedium: options.utmData?.utm_medium,
+      utmCampaign: options.utmData?.utm_campaign,
+      utmTerm: options.utmData?.utm_term,
+      utmContent: options.utmData?.utm_content,
       meta: {
         serpPosition: result.position ?? idx + 1,
         serpSource: result.source ?? (result.provider === 'apify' ? 'apify_google' : 'google'),
@@ -172,7 +170,7 @@ export async function generateLeadsFromSearch(
 
   return {
     requested: searchResults.length,
-    attempted: leadsPayload.length,
+    attempted: searchResults.length,
     inserted: created.length,
     leads: created,
   }

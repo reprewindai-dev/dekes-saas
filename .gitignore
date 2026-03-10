@@ -17,3 +17,4 @@ prisma/dev.db*
 
 # Turbo/Next cache
 .turbo/
+dekes-saas/tsconfig.tsbuildinfo

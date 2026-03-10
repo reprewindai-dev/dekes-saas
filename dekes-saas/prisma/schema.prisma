@@ -120,8 +120,9 @@ model Organization {
   leads     Lead[]
   queries   Query[]
   runs      Run[]
-  ecobeHandoffs EcobeHandoff[]
-  
+  ecobeHandoffs      EcobeHandoff[]
+  ecobeInboundEvents EcobeInboundEvent[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
@@ -378,6 +379,32 @@ enum EcobeHandoffType {
   WORKLOAD_SIGNAL
 }
 
+enum EcobeEventType {
+  BUDGET_WARNING
+  BUDGET_EXCEEDED
+  POLICY_DELAY
+  POLICY_BLOCK
+  HIGH_CARBON_PATTERN
+  LOW_CONFIDENCE_REGION
+  CLEAN_WINDOW_OPPORTUNITY
+  PROVIDER_DISAGREEMENT_ALERT
+  EXECUTION_DRIFT_RISK
+  ROUTING_POLICY_INSIGHT
+}
+
+enum EcobeEventSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum EcobeEventClassification {
+  OPPORTUNITY
+  RISK
+  INFORMATIONAL
+  NO_ACTION
+}
+
 model LeadEvent {
   id        String    @id @default(cuid())
   leadId    String
@@ -525,4 +552,29 @@ model EcobeHandoff {
 
   @@index([organizationId, status])
   @@index([createdAt])
+}
+
+model EcobeInboundEvent {
+  id                String                   @id @default(cuid())
+  organizationId    String
+  handoffId         String                   @unique
+  eventType         EcobeEventType
+  severity          EcobeEventSeverity
+  classification    EcobeEventClassification
+  rawPayload        Json
+  budgetUsed        Float?
+  budgetLimit       Float?
+  budgetCurrency    String?
+  policyId          String?
+  policyAction      String?
+  delayMinutes      Int?
+  cleanWindowRegion String?
+  replayUrl         String?
+  processedAt       DateTime                 @default(now())
+  createdAt         DateTime                 @default(now())
+
+  organization      Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, eventType])
 }

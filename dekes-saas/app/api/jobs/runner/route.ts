@@ -299,20 +299,34 @@ async function handleEcobeHandoffImmediate(payload: any, jobId: string) {
   }
 
   try {
-    // Create prospect in ECOBE
-    const payload = {
-      externalLeadId: handoff.leadId,
-      title: handoff.lead?.title,
-      company: handoff.lead?.company,
-      sourceUrl: handoff.lead?.sourceUrl,
-      score: handoff.qualificationScore,
-      qualificationReason: handoff.qualificationReason,
-      organizationId: handoff.organizationId,
-      metadata: handoff.lead?.meta,
+    // Create prospect in ECOBE using the structured EcobeProspectPayload shape
+    const leadMeta = handoff.lead?.meta as Record<string, unknown> | null | undefined
+    const ecobePayload = {
+      organization: {
+        name: handoff.organization?.name ?? 'Unknown',
+        domain: leadMeta?.domain as string | undefined,
+        sizeLabel: leadMeta?.companySize as string | undefined,
+        region: leadMeta?.gl as string | undefined,
+      },
+      intent: {
+        score: handoff.qualificationScore ?? 0,
+        reason: handoff.qualificationReason ?? '',
+        keywords: (leadMeta?.painTags as string[] | undefined) ?? [],
+      },
+      contact: {
+        name: leadMeta?.contactName as string | undefined,
+        email: leadMeta?.contactEmail as string | undefined,
+        linkedin: leadMeta?.linkedin as string | undefined,
+      },
+      source: {
+        leadId: handoff.leadId ?? '',
+        queryId: handoff.queryId,
+        runId: handoff.runId,
+      },
     }
 
     const result = await RetryPolicy.retryWithBackoff(
-      () => createEcobeProspect(payload),
+      () => createEcobeProspect(ecobePayload),
       jobId,
       3
     )
@@ -414,8 +428,12 @@ async function handleLeadEnrichmentImmediate(payload: any, jobId: string) {
       },
     })
 
-    // Index in vector database
-    await vectorService.indexLead(updatedLead)
+    // Index in vector database (indexLead requires non-null title and snippet)
+    await vectorService.indexLead({
+      ...updatedLead,
+      title: updatedLead.title ?? '',
+      snippet: updatedLead.snippet ?? '',
+    })
 
     return { success: true, lead: updatedLead }
     

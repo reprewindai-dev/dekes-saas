@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { prisma } from '@/lib/db'
@@ -31,11 +32,11 @@ export async function GET(request: Request) {
         intentClass: true,
         status: true,
         createdAt: true,
-        utm_source: true,
-        utm_medium: true,
-        utm_campaign: true,
-        utm_term: true,
-        utm_content: true,
+        utmSource: true,
+        utmMedium: true,
+        utmCampaign: true,
+        utmTerm: true,
+        utmContent: true,
       },
     })
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Target, TrendingUp, Users, Zap, ArrowRight } from 'lucide-react'
 import EcobeDashboardMetrics from '@/components/ecobe/dashboard-metrics'
+import EcobeInboundEventsPanel from '@/components/ecobe/inbound-events-panel'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -125,6 +126,9 @@ export default function DashboardPage() {
 
         {/* ECOBE Pipeline Metrics */}
         <EcobeDashboardMetrics />
+
+        {/* ECOBE Inbound Signals */}
+        <EcobeInboundEventsPanel />
 
         {/* Quick Actions */}
         <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-8">

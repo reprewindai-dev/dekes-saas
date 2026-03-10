@@ -5,21 +5,15 @@ import type { JobResult } from '@/lib/jobs/types'
 const STALE_DAYS = 45
 
 export async function runLeadCleanupJob(): Promise<JobResult> {
+  // Find canonicalHashes that appear more than once per org.
+  // Prisma groupBy requires orderBy when take is used.
   const duplicates = await prisma.lead.groupBy({
     by: ['organizationId', 'canonicalHash'],
-    where: {
-      canonicalHash: { not: null },
-    },
-    _count: {
-      _all: true,
-    },
+    _count: { _all: true },
     having: {
-      _count: {
-        _all: {
-          gt: 1,
-        },
-      },
+      canonicalHash: { _count: { gt: 1 } },
     },
+    orderBy: { canonicalHash: 'asc' },
     take: 25,
   })
 
@@ -58,9 +52,7 @@ export async function runLeadCleanupJob(): Promise<JobResult> {
   const staleQueries = await prisma.query.updateMany({
     where: {
       enabled: true,
-      updatedAt: {
-        lt: staleSince,
-      },
+      updatedAt: { lt: staleSince },
       runsCount: 0,
     },
     data: { enabled: false },

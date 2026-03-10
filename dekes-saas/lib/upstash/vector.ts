@@ -22,16 +22,23 @@ export function getVectorIndex() {
 
 // Vector utilities for lead operations
 export class VectorService {
-  private index: Index
-  private openaiApiKey: string
+  private _index: Index | null = null
+  private _openaiApiKey: string | null = null
 
-  constructor() {
-    this.index = getVectorIndex()
-    this.openaiApiKey = process.env.OPENAI_API_KEY || ''
-    
-    if (!this.openaiApiKey) {
-      throw new Error('Missing OPENAI_API_KEY for embeddings')
+  private get index(): Index {
+    if (!this._index) {
+      this._index = getVectorIndex()
     }
+    return this._index
+  }
+
+  private get openaiApiKey(): string {
+    if (!this._openaiApiKey) {
+      const key = process.env.OPENAI_API_KEY
+      if (!key) throw new Error('Missing OPENAI_API_KEY for embeddings')
+      this._openaiApiKey = key
+    }
+    return this._openaiApiKey
   }
 
   // Generate embeddings using OpenAI text-embedding-3-small

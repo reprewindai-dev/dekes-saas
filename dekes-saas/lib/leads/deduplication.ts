@@ -14,6 +14,7 @@ export class LeadDeduplicationService {
 
   // Check for duplicates using vector similarity
   async checkForDuplicates(lead: {
+    id?: string
     title: string
     snippet: string
     company?: string
@@ -30,7 +31,7 @@ export class LeadDeduplicationService {
   }> {
     try {
       // Search for similar leads in vector database
-      const similarLeads = await vectorService.findDuplicates(lead, threshold)
+      const similarLeads = await vectorService.findDuplicates({ ...lead, id: lead.id ?? '' }, threshold)
 
       if (similarLeads.length === 0) {
         return { isDuplicate: false, duplicates: [] }

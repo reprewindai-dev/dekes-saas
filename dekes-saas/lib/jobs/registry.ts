@@ -1,4 +1,4 @@
-import { schedule } from '@upstash/qstash'
+import { getQstashClient } from '@/lib/upstash/qstash'
 import { ScheduledJob } from '@/lib/jobs/types'
 
 const jobs = new Map<string, ScheduledJob>()
@@ -34,19 +34,19 @@ export async function scheduleJobs() {
 
   const authHeader = process.env.JOBS_SECRET ? { 'x-jobs-token': process.env.JOBS_SECRET } : undefined
 
+  const client = getQstashClient()
   await Promise.all(
     getScheduledJobs().map((job) =>
-      schedule({
-        cron: job.cron,
-        destination: `${process.env.JOBS_ENDPOINT_URL}?job=${job.id}`,
+      client.publish({
+        url: `${process.env.JOBS_ENDPOINT_URL}?job=${job.id}`,
         method: 'POST',
-        retries: 3,
-        delay: 0,
         headers: {
           'content-type': 'application/json',
           ...authHeader,
         },
         body: JSON.stringify({ description: job.description }),
+        cron: job.cron,
+        retries: 3,
       })
     )
   )

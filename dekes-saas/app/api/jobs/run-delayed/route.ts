@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { generateLeadsFromSearch } from '@/lib/leads/generator'
 import { ecobeCompleteWorkload } from '@/lib/ecobe/router'
+import { getQstashReceiver } from '@/lib/upstash/qstash'
 
 const payloadSchema = z.object({
   runId: z.string().min(1),
@@ -23,10 +24,35 @@ const payloadSchema = z.object({
 })
 
 export async function POST(request: Request) {
-  // Parse body once upfront — request body can only be consumed once
+  // Read raw body as text first so we can verify the QStash signature
+  // (request body can only be consumed once).
+  let rawText: string
+  try {
+    rawText = await request.text()
+  } catch {
+    return NextResponse.json({ error: 'Failed to read body' }, { status: 400 })
+  }
+
+  // Verify QStash signature when keys are configured (always true in production).
+  const signature = request.headers.get('Upstash-Signature')
+  if (process.env.QSTASH_CURRENT_SIGNING_KEY) {
+    if (!signature) {
+      return NextResponse.json({ error: 'Missing QStash signature' }, { status: 401 })
+    }
+    try {
+      const receiver = getQstashReceiver()
+      const valid = await receiver.verify({ signature, body: rawText })
+      if (!valid) {
+        return NextResponse.json({ error: 'Invalid QStash signature' }, { status: 401 })
+      }
+    } catch {
+      return NextResponse.json({ error: 'Signature verification failed' }, { status: 401 })
+    }
+  }
+
   let rawBody: unknown
   try {
-    rawBody = await request.json()
+    rawBody = JSON.parse(rawText)
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }

@@ -1,8 +1,12 @@
 import Groq from 'groq-sdk'
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-})
+let _groq: Groq | null = null
+function getGroq(): Groq {
+  if (!_groq) {
+    _groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+  }
+  return _groq
+}
 
 export type IntentClassification = {
   intentClass: 'HIGH_INTENT' | 'MEDIUM_INTENT' | 'LOW_INTENT'
@@ -45,7 +49,7 @@ Respond with JSON only:
 }`
 
   try {
-    const response = await groq.chat.completions.create({
+    const response = await getGroq().chat.completions.create({
       model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
@@ -104,7 +108,7 @@ Respond with JSON only:
 }`
 
   try {
-    const response = await groq.chat.completions.create({
+    const response = await getGroq().chat.completions.create({
       model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,

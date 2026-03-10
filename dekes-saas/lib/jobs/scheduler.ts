@@ -175,7 +175,12 @@ export class JobScheduler {
     lastHealthCheck: string
   }> {
     const healthKey = 'job_health:status'
-    const health = await redisCache.get(healthKey) || {
+    const health = await redisCache.get<{
+      scheduledJobs: number
+      runningJobs: number
+      recentFailures: number
+      lastHealthCheck: string
+    }>(healthKey) || {
       scheduledJobs: 0,
       runningJobs: 0,
       recentFailures: 0,
@@ -193,12 +198,8 @@ export class JobScheduler {
 
   async recordJobFailure(jobType: string, error: string) {
     const failureKey = `job_failures:${jobType}`
-    const failures = await redisCache.get(failureKey) || []
-    
-    failures.push({
-      timestamp: new Date().toISOString(),
-      error,
-    })
+    const existing = await redisCache.get<Array<{ timestamp: string; error: string }>>(failureKey) || []
+    const failures = [...existing, { timestamp: new Date().toISOString(), error }]
 
     // Keep only last 10 failures
     const recentFailures = failures.slice(-10)
@@ -217,7 +218,7 @@ export class JobScheduler {
     const jobTypes = ['ecobe-handoff-retry', 'lead-enrichment-batch', 'analytics-aggregation', 'quota-reset', 'lead-cleanup']
     
     for (const type of jobTypes) {
-      const failures = await redisCache.get(`job_failures:${type}`) || []
+      const failures = await redisCache.get<Array<{ timestamp: string; error: string }>>(`job_failures:${type}`) || []
       allFailures.push(...failures.map(f => ({ ...f, jobType: type })))
     }
 

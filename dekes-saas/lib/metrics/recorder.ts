@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 import type { JsonValue } from '@/lib/jobs/types'
 
 export async function recordMetric(name: string, value: JsonValue, scope?: string) {
@@ -6,7 +7,7 @@ export async function recordMetric(name: string, value: JsonValue, scope?: strin
     data: {
       name,
       scope,
-      value,
+      value: value as Prisma.InputJsonValue,
     },
   })
 }

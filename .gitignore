@@ -8,6 +8,7 @@ out/
 dist/
 
 .vscode/
+.windsurf/
 .DS_Store
 
 *.log
@@ -18,3 +19,14 @@ prisma/dev.db*
 # Turbo/Next cache
 .turbo/
 dekes-saas/tsconfig.tsbuildinfo
+
+# VS Code extensions (large binaries)
+extensions/
+
+# Session/auth files
+*.txt
+!README.txt
+
+# Run results (generated data)
+run_result*.json
+leads_snapshot*.json

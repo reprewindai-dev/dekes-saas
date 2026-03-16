@@ -33,22 +33,40 @@ export function getQstashClient() {
       retries?: number
       cron?: string
     }) => {
-      const response = await fetch('https://qstash.upstash.io/v1/publish', {
+      // QStash V2 API: URL goes in the path
+      const publishUrl = `https://qstash.upstash.io/v2/publish/${options.url}`
+      
+      // Build headers for V2 API
+      const headers: Record<string, string> = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      }
+      
+      // V2 uses Upstash-* headers for options
+      if (options.method) {
+        headers['Upstash-Method'] = options.method
+      }
+      if (options.delay) {
+        headers['Upstash-Delay'] = `${options.delay}s`
+      }
+      if (options.retries) {
+        headers['Upstash-Retries'] = String(options.retries)
+      }
+      if (options.cron) {
+        headers['Upstash-Cron'] = options.cron
+      }
+      
+      // Add custom headers
+      if (options.headers) {
+        for (const [key, value] of Object.entries(options.headers)) {
+          headers[`Upstash-Forward-${key}`] = value
+        }
+      }
+
+      const response = await fetch(publishUrl, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
-        body: JSON.stringify({
-          url: options.url,
-          method: options.method || 'POST',
-          headers: options.headers,
-          body: options.body,
-          delay: options.delay,
-          retries: options.retries || 3,
-          cron: options.cron,
-        }),
+        headers,
+        body: options.body,
       })
 
       if (!response.ok) {

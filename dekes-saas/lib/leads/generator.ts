@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { fetchSearchResults } from '@/lib/search/fallback'
 import { classifyLeadIntent, type IntentClassification } from '@/lib/ai/groq'
+import { getCalibratedWeights } from '@/lib/leads/feedback-loop'
 import type { UTMData } from '@/lib/utm'
 
 export type LeadGenerationOptions = {
@@ -59,6 +60,9 @@ export async function generateLeadsFromSearch(
 
   const created: Prisma.LeadUncheckedCreateInput[] = []
 
+  // Load feedback-calibrated scoring weights (defaults to 1.0 if no feedback yet)
+  const weights = await getCalibratedWeights()
+
   // Process leads sequentially to handle async AI classification properly
   for (const [idx, result] of searchResults.entries()) {
     const link = result.link || result.displayed_link
@@ -94,6 +98,52 @@ export async function generateLeadsFromSearch(
       }
     }
 
+    // ── 5-Layer Scoring Engine ──────────────────────────────────────────
+    // Layer 1: Intent depth — AI classification confidence + intent class weight
+    const intentWeight = intentClassification.intentClass === 'HIGH_INTENT' ? 15
+      : intentClassification.intentClass === 'MEDIUM_INTENT' ? 5 : -5
+    const intentDepthScore = secondaryScore(
+      baseScore,
+      Math.round(intentWeight * intentClassification.confidence)
+    )
+
+    // Layer 2: Urgency velocity — immediacy + timeline signals
+    const urgencyBoost = intentClassification.urgencySignals.immediate ? 10 : 0
+    const timelineBoost = intentClassification.urgencySignals.timeline === 'this_quarter' ? 5
+      : intentClassification.urgencySignals.timeline === 'this_month' ? 8 : 0
+    const urgencyScore = secondaryScore(baseScore, urgencyBoost + timelineBoost - 5)
+
+    // Layer 3: Budget signals — number of budget indicators detected
+    const budgetIndicatorCount = intentClassification.urgencySignals.budgetIndicators?.length ?? 0
+    const budgetScore = secondaryScore(baseScore, budgetIndicatorCount * 4 - 8)
+
+    // Layer 4: Fit precision — AI service fit score (0-1)
+    const fitScore = secondaryScore(
+      baseScore,
+      Math.round((intentClassification.serviceFit - 0.5) * 20)
+    )
+
+    // Layer 5: Engagement depth — pain point specificity + search position
+    const painPointCount = intentClassification.painPoints?.length ?? 0
+    const engagementScore = secondaryScore(baseScore, painPointCount * 3 - 3)
+
+    // Composite score: feedback-calibrated weighted blend of all 5 layers
+    const rawComposite =
+      intentDepthScore * 0.30 * weights.intentWeight +
+      urgencyScore * 0.20 * weights.urgencyWeight +
+      budgetScore * 0.15 * weights.budgetWeight +
+      fitScore * 0.20 * weights.fitWeight +
+      engagementScore * 0.15 * weights.engagementWeight
+    // Normalize back to 100-point scale (weights are multipliers around 1.0)
+    const weightSum =
+      0.30 * weights.intentWeight +
+      0.20 * weights.urgencyWeight +
+      0.15 * weights.budgetWeight +
+      0.20 * weights.fitWeight +
+      0.15 * weights.engagementWeight
+    const compositeScore = Math.round(rawComposite / weightSum)
+    const finalScore = Math.max(MIN_SCORE, Math.min(MAX_SCORE, compositeScore))
+
     const leadPayload: Prisma.LeadUncheckedCreateInput = {
       organizationId: options.organizationId,
       queryId: options.queryId,
@@ -105,11 +155,11 @@ export async function generateLeadsFromSearch(
       title: result.title?.trim() || null,
       snippet: result.snippet?.trim() || null,
       publishedAt: result.date ? new Date() : null,
-      score: baseScore,
-      intentDepth: secondaryScore(baseScore, 3),
-      urgencyVelocity: secondaryScore(baseScore, -2),
-      budgetSignals: secondaryScore(baseScore, -5),
-      fitPrecision: secondaryScore(baseScore, 1),
+      score: finalScore,
+      intentDepth: intentDepthScore,
+      urgencyVelocity: urgencyScore,
+      budgetSignals: budgetScore,
+      fitPrecision: fitScore,
       buyerType: intentClassification.buyerType,
       intentClass: intentClassification.intentClass,
       intentConfidence: intentClassification.confidence,
@@ -135,6 +185,29 @@ export async function generateLeadsFromSearch(
     }
 
     try {
+      // Domain-level duplicate detection: check if another lead from the same
+      // domain already exists for this org (cross-run dedup)
+      let isDuplicate = false
+      let duplicateOfLeadId: string | undefined
+      try {
+        const domain = new URL(canonicalUrl).hostname.replace(/^www\./, '')
+        const existingDomainLead = await prisma.lead.findFirst({
+          where: {
+            organizationId: options.organizationId,
+            canonicalUrl: { contains: domain },
+            canonicalHash: { not: leadPayload.canonicalHash },
+          },
+          select: { id: true },
+          orderBy: { score: 'desc' },
+        })
+        if (existingDomainLead) {
+          isDuplicate = true
+          duplicateOfLeadId = existingDomainLead.id
+        }
+      } catch {
+        // URL parse failed — not a duplicate detection error, continue
+      }
+
       await prisma.lead.upsert({
         where: {
           organizationId_canonicalHash: {
@@ -159,8 +232,14 @@ export async function generateLeadsFromSearch(
           rush12HourEligible: leadPayload.rush12HourEligible,
           painTags: leadPayload.painTags,
           serviceTags: leadPayload.serviceTags,
+          isDuplicate,
+          duplicateOfLeadId: duplicateOfLeadId ?? null,
         },
-        create: leadPayload,
+        create: {
+          ...leadPayload,
+          isDuplicate,
+          duplicateOfLeadId: duplicateOfLeadId ?? null,
+        },
       })
       created.push(leadPayload)
     } catch (error) {

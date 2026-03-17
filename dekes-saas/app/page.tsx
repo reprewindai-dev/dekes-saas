@@ -582,34 +582,34 @@ const heroSignals: HeroSignal[] = [
 
 const heroStats = [
   {
-    label: 'Qualified buyers delivered',
-    value: '12,480',
-    detail: 'Across SaaS, fintech, cybersecurity, and AI rollouts',
+    label: 'AI-scored leads per scan',
+    value: '100+',
+    detail: 'Intent-classified and buyer-fit scored from live web signals',
   },
   {
-    label: 'Average signal accuracy',
-    value: '92%',
-    detail: 'Validation includes proof artifacts & intent scoring',
+    label: 'Multi-signal scoring depth',
+    value: '5-layer',
+    detail: 'Intent, urgency, budget, fit, and engagement signals per lead',
   },
   {
-    label: 'Pipeline lift after 60 days',
-    value: '3.2x',
-    detail: 'Attributed revenue growth across customers',
+    label: 'Carbon-optimized routing',
+    value: 'Real-time',
+    detail: 'Every workload routed through ECOBE grid intelligence',
   },
   {
-    label: 'Security & governance coverage',
+    label: 'Audit & governance',
     value: '100%',
-    detail: 'Every run audited and role-based access controlled',
+    detail: 'Every run tracked with RBAC and decision provenance',
   },
 ]
 
 const trustedLogos = ['CARBON', 'STRATUM', 'ORBITAL', 'NIMBUS', 'FLEET', 'HALO']
 
 const proofMetrics = [
-  { caption: 'Signal Coverage', value: '48+', label: 'Unique web sources monitored' },
-  { caption: 'Sales Activation', value: '12 min', label: 'Avg. time to first contact' },
-  { caption: 'Intent Proof', value: '5.4', label: 'Signals validated per buyer' },
-  { caption: 'Revenue Lift', value: '$4.8M', label: 'Net new pipeline created/quarter' },
+  { caption: 'Signal Coverage', value: '5+', label: 'Live intent signals per buyer scored' },
+  { caption: 'Time to Lead', value: '<2 min', label: 'From scan to scored lead delivery' },
+  { caption: 'Carbon Routing', value: '6', label: 'Cloud regions optimized in real-time' },
+  { caption: 'Scoring Layers', value: '5', label: 'Intent, urgency, budget, fit, engagement' },
 ]
 
 const pipelineStages: Array<{

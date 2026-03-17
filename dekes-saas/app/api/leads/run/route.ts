@@ -42,6 +42,28 @@ export async function POST(request: Request) {
 
     const organizationId = session.user.organizationId
 
+    // ── 0. Quota enforcement ─────────────────────────────────────────────────
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { plan: true, monthlyLeadQuota: true, monthlyLeadsUsed: true },
+    })
+
+    if (org && org.monthlyLeadQuota > 0) {
+      const currentCount = org.monthlyLeadsUsed ?? 0
+      if (currentCount >= org.monthlyLeadQuota) {
+        return NextResponse.json(
+          {
+            error: 'Monthly lead quota exceeded',
+            quota: org.monthlyLeadQuota,
+            used: currentCount,
+            plan: org.plan,
+            upgradeUrl: '/settings/billing',
+          },
+          { status: 429 },
+        )
+      }
+    }
+
     // ── 1. Upsert query ────────────────────────────────────────────────────────
     const query = data.queryId
       ? await prisma.query.findFirst({
@@ -202,16 +224,22 @@ export async function POST(request: Request) {
 
     const durationMinutes = Math.ceil((Date.now() - runStart) / 60_000) || 1
 
-    // ── 8. Finish run ─────────────────────────────────────────────────────────
-    const finishedRun = await prisma.run.update({
-      where: { id: run.id },
-      data: {
-        finishedAt: new Date(),
-        status: 'FINISHED',
-        resultCount: leadGeneration.requested,
-        leadCount: leadGeneration.inserted,
-      },
-    })
+    // ── 8. Finish run + increment quota counter ────────────────────────────
+    const [finishedRun] = await Promise.all([
+      prisma.run.update({
+        where: { id: run.id },
+        data: {
+          finishedAt: new Date(),
+          status: 'FINISHED',
+          resultCount: leadGeneration.requested,
+          leadCount: leadGeneration.inserted,
+        },
+      }),
+      prisma.organization.update({
+        where: { id: organizationId },
+        data: { monthlyLeadsUsed: { increment: leadGeneration.inserted } },
+      }).catch(() => {}),
+    ])
 
     // ── 9. Report CO₂ to ECOBE (best-effort) ─────────────────────────────────
     const estimatedEnergyKwh = (data.estimatedResults / 1000) * 0.05
@@ -249,6 +277,22 @@ export async function POST(request: Request) {
       )
     }
 
+    // ── 11. Carbon savings badge ───────────────────────────────────────────
+    const defaultIntensity = 400 // gCO2/kWh global average
+    const routedIntensity = typeof optimization.estimatedCO2 === 'number'
+      ? optimization.estimatedCO2 / Math.max(actualEnergyKwh, 0.001)
+      : defaultIntensity
+    const carbonSavedGrams = Math.max(0, (defaultIntensity - routedIntensity) * actualEnergyKwh)
+    const carbonBadge = {
+      carbonSavedGrams: Math.round(carbonSavedGrams * 100) / 100,
+      routedRegion: executionRegion,
+      routedIntensityGCO2: Math.round(routedIntensity),
+      defaultIntensityGCO2: defaultIntensity,
+      reductionPct: routedIntensity < defaultIntensity
+        ? Math.round((1 - routedIntensity / defaultIntensity) * 100)
+        : 0,
+    }
+
     return NextResponse.json({
       organizationId,
       query: { id: ensuredQuery.id, query: ensuredQuery.query },
@@ -273,6 +317,7 @@ export async function POST(request: Request) {
         : null,
       optimization,
       leadGeneration,
+      carbonBadge,
     })
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {

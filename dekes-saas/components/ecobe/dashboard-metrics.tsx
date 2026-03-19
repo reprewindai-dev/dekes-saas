@@ -41,8 +41,11 @@ export default function EcobeDashboardMetrics() {
 
   useEffect(() => {
     fetch('/api/dashboard/ecobe-stats', { credentials: 'include' })
-      .then(res => res.json())
-      .then(setData)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then(d => { if (d && d.stats) setData(d) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [])

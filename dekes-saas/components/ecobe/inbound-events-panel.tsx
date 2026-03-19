@@ -70,8 +70,11 @@ export default function EcobeInboundEventsPanel() {
 
   useEffect(() => {
     fetch('/api/dashboard/ecobe-signals', { credentials: 'include' })
-      .then((res) => res.json())
-      .then(setData)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((d) => { if (d && d.counts) setData(d) })
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [])

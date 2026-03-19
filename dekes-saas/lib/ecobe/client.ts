@@ -102,12 +102,12 @@ function getLegacyHeaders(): Record<string, string> {
 }
 
 function getModernBaseUrl(): string {
-  return normalizeBaseUrl(process.env.ECOBE_API_BASE_URL || MODERN_DEFAULT_BASE)
+  return normalizeBaseUrl(process.env.ECOBE_API_BASE_URL || process.env.ECOBE_ENGINE_URL || MODERN_DEFAULT_BASE)
 }
 
 function getModernApiKey(): string {
-  const key = process.env.ECOBE_API_KEY
-  if (!key) throw new Error('Missing ECOBE_API_KEY')
+  const key = process.env.ECOBE_API_KEY || process.env.ECOBE_ENGINE_API_KEY
+  if (!key) throw new Error('Missing ECOBE_API_KEY or ECOBE_ENGINE_API_KEY')
   return key
 }
 
@@ -132,8 +132,7 @@ async function callModernApi<T = any>(path: string, init: RequestInit): Promise<
 }
 
 function getOptimizeUrl(): string {
-  const direct = process.env.ECOBE_OPTIMIZE_URL || process.env.ECOBE_ENGINE_URL
-  if (direct) return normalizeBaseUrl(direct)
+  if (process.env.ECOBE_OPTIMIZE_URL) return normalizeBaseUrl(process.env.ECOBE_OPTIMIZE_URL)
   return `${getLegacyBaseUrl()}/api/v1/dekes/optimize`
 }
 

@@ -1,7 +1,7 @@
-const ECOBE_BASE = (process.env.ECOBE_API_BASE_URL || 'https://api.ecobe.dev').replace(/\/+$/, '')
+const ECOBE_BASE = (process.env.ECOBE_API_BASE_URL || process.env.ECOBE_ENGINE_URL || 'https://api.ecobe.dev').replace(/\/+$/, '')
 
 function getHeaders(): Record<string, string> {
-  const key = process.env.ECOBE_API_KEY
+  const key = process.env.ECOBE_API_KEY || process.env.ECOBE_ENGINE_API_KEY
   return {
     'Content-Type': 'application/json',
     ...(key ? { Authorization: `Bearer ${key}` } : {}),

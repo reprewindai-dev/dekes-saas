@@ -32,10 +32,12 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Copy prisma schema + migrations for runtime migrate deploy
+# Copy prisma schema + migrations + CLI for runtime migrate deploy
+# MUST include node_modules/prisma so npx uses the pinned v5 instead of downloading v7
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
 RUN chown -R nextjs:nodejs /app
 USER nextjs

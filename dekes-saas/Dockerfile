@@ -1,8 +1,9 @@
+<<<<<<<\
 FROM node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat openssl openssl-dev
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
@@ -20,6 +21,7 @@ RUN npm run build
 
 # Production image, copy all the files and run next
 FROM base AS runner
+RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -52,6 +54,7 @@ RUN chown -R nextjs:nodejs /app && \
 # Switch to non-root user
 USER nextjs
 
+<<<<<<< HEAD
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node healthcheck.js || exit 1
@@ -63,3 +66,8 @@ ENV HOSTNAME="0.0.0.0"
 
 # Use more secure command with proper error handling
 CMD ["sh", "-c", "if [ \"$(id -u)\" = \"0\" ]; then echo 'Running as root is not allowed'; exit 1; fi; npx prisma migrate deploy || echo 'Migration skipped or failed'; node server.js"]
+=======
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]
+>>>>>>> b4a3aaa (Fix Prisma SSL library error)

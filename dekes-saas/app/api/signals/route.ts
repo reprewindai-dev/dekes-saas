@@ -4,7 +4,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createSignalIntegration } from '@/lib/signals/signal-integration'
-import { createSignalHarvestingEngine, createEvidenceEngine } from '@/lib/signals/harvesting-engine'
+import { createSignalHarvestingEngine } from '@/lib/signals/harvesting-engine'
+import { createEvidenceEngine } from '@/lib/signals/evidence-engine'
 import { createValidationError, createApiError, classifyError, logError } from '@/lib/error/error-handler'
 import { createLogger } from '@/lib/logger'
 
@@ -440,7 +441,7 @@ async function deleteSignal(signalId: string) {
 // Additional API endpoints for specific functionality
 
 // GET /api/signals/workloads/[id]
-export async function getWorkload(request: NextRequest, { params }: { params: { id: string } }) {
+async function getWorkload(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const integration = getIntegration()
     const result = await integration.getWorkloadResults(params.id)
@@ -469,7 +470,7 @@ export async function getWorkload(request: NextRequest, { params }: { params: { 
 }
 
 // GET /api/signals/evidence/[signalId]
-export async function getSignalEvidence(request: NextRequest, { params }: { params: { signalId: string } }) {
+async function getSignalEvidence(request: NextRequest, { params }: { params: { signalId: string } }) {
   try {
     const evidenceEngine = getEvidenceEngine()
     const evidence = await evidenceEngine.getEvidenceBySignal(params.signalId)
@@ -493,7 +494,7 @@ export async function getSignalEvidence(request: NextRequest, { params }: { para
 }
 
 // GET /api/signals/history/[signalId]
-export async function getValidationHistory(request: NextRequest, { params }: { params: { signalId: string } }) {
+async function getValidationHistory(request: NextRequest, { params }: { params: { signalId: string } }) {
   try {
     const evidenceEngine = getEvidenceEngine()
     const history = await evidenceEngine.getValidationHistory(params.signalId)
@@ -517,7 +518,7 @@ export async function getValidationHistory(request: NextRequest, { params }: { p
 }
 
 // POST /api/signals/integration/start
-export async function startIntegration(request: NextRequest) {
+async function startIntegration(request: NextRequest) {
   try {
     const integration = getIntegration()
     await integration.start()
@@ -542,7 +543,7 @@ export async function startIntegration(request: NextRequest) {
 }
 
 // POST /api/signals/integration/stop
-export async function stopIntegration(request: NextRequest) {
+async function stopIntegration(request: NextRequest) {
   try {
     const integration = getIntegration()
     await integration.stop()
@@ -567,7 +568,7 @@ export async function stopIntegration(request: NextRequest) {
 }
 
 // GET /api/signals/analytics
-export async function getAnalytics(request: NextRequest) {
+async function getAnalytics(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const startDate = searchParams.get('startDate')

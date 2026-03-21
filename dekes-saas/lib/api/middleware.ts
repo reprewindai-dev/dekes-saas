@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { classifyError, logError, StandardError } from '../error/error-handler'
+import { classifyError, logError, StandardError, ErrorType, ErrorSeverity } from '../error/error-handler'
 import { generateRequestId, createLogger } from '../logger'
 import type { ErrorResponse } from '../../types'
 
@@ -55,7 +55,7 @@ export function createErrorResponse(error: StandardError): NextResponse<ErrorRes
   const statusCode = getStatusCodeFromError(error)
   
   return NextResponse.json({
-    error: error.userMessage || error.message,
+    error: error.message || error.userMessage || 'An error occurred',
     code: error.code,
     type: error.type,
     retryable: error.retryable,
@@ -107,8 +107,8 @@ export function validateRequest<T>(
   } catch (error) {
     if (error instanceof z.ZodError) {
       const validationError = new StandardError({
-        type: 'VALIDATION',
-        severity: 'LOW',
+        type: ErrorType.VALIDATION,
+        severity: ErrorSeverity.LOW,
         message: `Validation failed: ${error.errors.map(e => e.message).join(', ')}`,
         details: { validationErrors: error.errors },
         userMessage: 'Invalid input provided. Please check your data and try again.',
@@ -135,8 +135,8 @@ export async function withDatabaseErrorHandling<T>(
     
     // Re-throw as database error
     const dbError = new StandardError({
-      type: 'DATABASE',
-      severity: 'HIGH',
+      type: ErrorType.DATABASE,
+      severity: ErrorSeverity.HIGH,
       message: `Database operation failed: ${error instanceof Error ? error.message : String(error)}`,
       details: { 
         originalError: error instanceof Error ? error.message : String(error),

@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
         runId: lead.runId,
         handoffType: 'PROSPECT',
         status: 'PENDING',
-        payloadJson: handoffPayload,
+        payloadJson: JSON.parse(JSON.stringify(handoffPayload)),
         qualificationReason: qualification.reason,
         qualificationScore: qualification.score,
         attempts: 0,
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
           handoffId: handoff.id,
           leadId,
           jobId,
-        } as EcobeHandoffEventPayload,
+        },
       })
 
       await recordMetric('ecobe.handoff.queued', {

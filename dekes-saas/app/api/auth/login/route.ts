@@ -110,4 +110,4 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     res.headers.set('X-RateLimit-Reset', String(rateLimitResult.resetTime || 0))
 
     return res
-}
+})

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { classifyError, logError, StandardError } from './error-handler'
+import { classifyError, logError, StandardError } from '../error/error-handler'
 import { generateRequestId, createLogger } from '../logger'
-import type { ErrorResponse } from '../types'
+import type { ErrorResponse } from '../../types'
 
 // API Route Wrapper for consistent error handling
 export function withErrorHandling(

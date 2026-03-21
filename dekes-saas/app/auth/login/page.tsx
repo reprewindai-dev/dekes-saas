@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -33,7 +34,10 @@ export default function LoginPage() {
       if (!res.ok) {
         throw new Error(result.error || 'Failed to log in')
       }
-      router.push('/dashboard')
+
+      const from = searchParams.get('from')
+      const destination = from && from.startsWith('/') ? from : '/dashboard'
+      router.push(destination)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -95,5 +99,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
+        <div className="text-slate-400 text-sm">Loading...</div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   )
 }

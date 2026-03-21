@@ -5,6 +5,8 @@ import type { EcobeStatsResponse, ErrorResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
     const token = req.headers.get('authorization')?.replace('Bearer ', '')

@@ -4,16 +4,40 @@ import { prisma } from '@/lib/db'
 import { verifyPassword } from '@/lib/auth/password'
 import { createSession } from '@/lib/auth/jwt'
 import { z } from 'zod'
+import { authRateLimiter, getClientIdentifier } from '@/lib/rate-limiting'
+import { authLogger, generateRequestId, logApiError } from '@/lib/logger'
+import { withErrorHandling, validateRequest, createSuccessResponse, checkRateLimit } from '@/lib/api/middleware'
+import { createValidationError, createApiError } from '@/lib/error/error-handler'
+import type { LoginResponse, ErrorResponse } from '@/types'
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string(),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required'),
 })
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json()
-    const data = loginSchema.parse(body)
+export const POST = withErrorHandling(async (request: NextRequest) => {
+  const requestId = generateRequestId()
+  const logger = authLogger.child('login')
+  
+  // Apply rate limiting
+  const identifier = getClientIdentifier(request)
+  const rateLimitResult = authRateLimiter.isAllowed(identifier)
+  
+  if (!rateLimitResult.allowed) {
+    throw createApiError(429, 'Too many login attempts. Please try again later.', {
+      identifier,
+      resetTime: rateLimitResult.resetTime
+    }, { requestId })
+  }
+
+  // Parse and validate request body
+  const body = await request.json()
+  const data = validateRequest(loginSchema, body, { requestId })
+  
+  logger.info('Login request validated', {
+    requestId,
+    email: data.email
+  })
 
     // Find user
     const user = await prisma.user.findUnique({
@@ -22,18 +46,18 @@ export async function POST(request: Request) {
     })
 
     if (!user) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+      throw createApiError(401, 'Invalid credentials', undefined, { requestId })
     }
 
     // Check if user is active
     if (user.status !== 'ACTIVE') {
-      return NextResponse.json({ error: 'Account is suspended' }, { status: 403 })
+      throw createApiError(403, 'Account is suspended', { status: user.status }, { requestId })
     }
 
     // Verify password
     const valid = await verifyPassword(data.password, user.passwordHash)
     if (!valid) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+      throw createApiError(401, 'Invalid credentials', undefined, { requestId })
     }
 
     // Update last login
@@ -48,8 +72,14 @@ export async function POST(request: Request) {
       request.headers.get('x-forwarded-for') || undefined,
       request.headers.get('user-agent') || undefined
     )
+    
+    logger.info('Login successful', {
+      requestId,
+      userId: user.id,
+      organizationId: user.organizationId
+    })
 
-    const res = NextResponse.json({
+    const response: LoginResponse = {
       user: {
         id: user.id,
         email: user.email,
@@ -58,8 +88,12 @@ export async function POST(request: Request) {
         role: user.role,
       },
       token,
-    })
+    }
 
+    // Create response with cookies
+    const res = createSuccessResponse(response, { requestId })
+    
+    // Set session cookie
     res.cookies.set({
       name: 'DEKES_SESSION',
       value: token,
@@ -70,23 +104,10 @@ export async function POST(request: Request) {
       maxAge: 60 * 60 * 24 * 7,
     })
 
+    // Add rate limit headers
+    res.headers.set('X-RateLimit-Limit', '5')
+    res.headers.set('X-RateLimit-Remaining', String(rateLimitResult.remaining || 0))
+    res.headers.set('X-RateLimit-Reset', String(rateLimitResult.resetTime || 0))
+
     return res
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors[0].message }, { status: 400 })
-    }
-
-    const message = error instanceof Error ? error.message : String(error)
-    console.error('Login error:', message)
-
-    if (
-      message.includes('Missing JWT_SECRET') ||
-      message.includes('Missing SESSION_SECRET') ||
-      message.includes('STRIPE_SECRET_KEY')
-    ) {
-      return NextResponse.json({ error: message }, { status: 500 })
-    }
-
-    return NextResponse.json({ error: 'Failed to log in' }, { status: 500 })
-  }
 }

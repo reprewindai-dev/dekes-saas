@@ -1,3 +1,5 @@
+import { validateRequest, EcobeRouteRequestSchema, EcobeCompleteRequestSchema } from '../validation/ecobe-schemas'
+
 const ECOBE_BASE = (process.env.ECOBE_API_BASE_URL || process.env.ECOBE_ENGINE_URL || 'https://api.ecobe.dev').replace(/\/+$/, '')
 
 function getHeaders(): Record<string, string> {
@@ -49,11 +51,14 @@ export type EcobeCompleteRequest = {
   status: 'success' | 'failed' | 'partial'
 }
 
-export async function ecobeRouteWorkload(req: EcobeRouteRequest): Promise<EcobeRouteResponse> {
+export async function ecobeRouteWorkload(req: unknown): Promise<EcobeRouteResponse> {
+  // Validate input
+  const validatedRequest = validateRequest(EcobeRouteRequestSchema, req)
+  
   const res = await fetch(`${ECOBE_BASE}/api/v1/route`, {
     method: 'POST',
     headers: getHeaders(),
-    body: JSON.stringify(req),
+    body: JSON.stringify(validatedRequest),
     cache: 'no-store',
   })
 
@@ -65,11 +70,14 @@ export async function ecobeRouteWorkload(req: EcobeRouteRequest): Promise<EcobeR
   return (await res.json()) as EcobeRouteResponse
 }
 
-export async function ecobeCompleteWorkload(req: EcobeCompleteRequest): Promise<void> {
+export async function ecobeCompleteWorkload(req: unknown): Promise<void> {
+  // Validate input
+  const validatedRequest = validateRequest(EcobeCompleteRequestSchema, req)
+  
   const res = await fetch(`${ECOBE_BASE}/api/v1/workloads/complete`, {
     method: 'POST',
     headers: getHeaders(),
-    body: JSON.stringify(req),
+    body: JSON.stringify(validatedRequest),
     cache: 'no-store',
   })
 

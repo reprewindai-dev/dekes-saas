@@ -5,6 +5,7 @@ import { hashPassword, validatePassword } from '@/lib/auth/password'
 import { createSession } from '@/lib/auth/jwt'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
+import { authRateLimiter, getClientIdentifier } from '@/lib/rate-limiting'
 
 const emptyToUndefined = (value: unknown) => {
   if (typeof value !== 'string') return value
@@ -20,6 +21,28 @@ const signupSchema = z.object({
 })
 
 export async function POST(request: Request) {
+  // Apply rate limiting
+  const identifier = getClientIdentifier(request)
+  const rateLimitResult = authRateLimiter.isAllowed(identifier)
+  
+  if (!rateLimitResult.allowed) {
+    return NextResponse.json(
+      { 
+        error: 'Too many signup attempts. Please try again later.',
+        resetTime: rateLimitResult.resetTime
+      }, 
+      { 
+        status: 429,
+        headers: {
+          'X-RateLimit-Limit': '5',
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(rateLimitResult.resetTime || 0),
+          'Retry-After': String(Math.ceil((rateLimitResult.resetTime! - Date.now()) / 1000))
+        }
+      }
+    )
+  }
+
   try {
     const body = await request.json()
     const data = signupSchema.parse(body)
@@ -82,6 +105,11 @@ export async function POST(request: Request) {
       },
       token,
     })
+
+    // Add rate limit headers
+    res.headers.set('X-RateLimit-Limit', '5')
+    res.headers.set('X-RateLimit-Remaining', String(rateLimitResult.remaining || 0))
+    res.headers.set('X-RateLimit-Reset', String(rateLimitResult.resetTime || 0))
 
     res.cookies.set({
       name: 'DEKES_SESSION',

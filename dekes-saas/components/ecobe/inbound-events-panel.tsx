@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Info, ExternalLink, Radio } from 'lucide-react'
+import { cacheStrategies } from '../../lib/cache/cache-utils'
+import { TableSkeleton } from '../ui/skeleton'
+import { ApiErrorBoundary } from '../error/error-boundary'
 
 interface EcobeSignalEvent {
   id: string
@@ -65,29 +68,63 @@ function formatDate(dateString: string) {
 }
 
 export default function EcobeInboundEventsPanel() {
+  return (
+    <ApiErrorBoundary>
+      <EcobeInboundEventsPanelInner />
+    </ApiErrorBoundary>
+  )
+}
+
+function EcobeInboundEventsPanelInner() {
   const [data, setData] = useState<EcobeSignalsData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/dashboard/ecobe-signals', { credentials: 'include' })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
-      .then((d) => { if (d && d.counts) setData(d) })
-      .catch(console.error)
-      .finally(() => setLoading(false))
+    const fetchData = async () => {
+      try {
+        setError(null)
+        const result = await cacheStrategies.realtime('/api/dashboard/ecobe-signals', { 
+          credentials: 'include' 
+        })
+        
+        if (result && result.counts) {
+          setData(result)
+        } else {
+          throw new Error('Invalid response format from ECOBE signals API')
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load ECOBE signals'
+        setError(errorMessage)
+        console.error('ECOBE signals fetch error:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
   }, [])
 
   if (loading) {
+    return <TableSkeleton rows={5} columns={6} showHeader={true} />
+  }
+
+  if (error) {
     return (
-      <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 animate-pulse">
-        <div className="h-5 bg-slate-700 rounded w-48 mb-4"></div>
-        <div className="space-y-3">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-12 bg-slate-700 rounded"></div>
-          ))}
+      <div className="bg-slate-900/50 border border-red-500/20 rounded-xl p-8 text-center">
+        <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
         </div>
+        <h3 className="text-white font-semibold mb-2">Unable to Load ECOBE Signals</h3>
+        <p className="text-slate-400 text-sm mb-4">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-lg text-cyan-400 text-sm transition-colors"
+        >
+          Try Again
+        </button>
       </div>
     )
   }
@@ -95,7 +132,7 @@ export default function EcobeInboundEventsPanel() {
   if (!data) {
     return (
       <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-8 text-center">
-        <p className="text-slate-400">Unable to load ECOBE signals</p>
+        <p className="text-slate-400">No ECOBE signals data available</p>
       </div>
     )
   }

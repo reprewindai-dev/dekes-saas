@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { prisma } from '@/lib/db'
 import { validateSession } from '@/lib/auth/jwt'
 import { getStoredUTMData } from '@/lib/utm'
+import type { LeadListItem, ErrorResponse } from '@/types'
 
 export async function GET(request: Request) {
   try {
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const leads = await prisma.lead.findMany({
+    const leads: LeadListItem[] = await prisma.lead.findMany({
       where: { organizationId },
       orderBy: { createdAt: 'desc' },
       take: 100,

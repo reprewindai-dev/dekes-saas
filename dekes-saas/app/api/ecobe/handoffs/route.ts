@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { validateSession } from '@/lib/auth/jwt'
 
+export const dynamic = 'force-dynamic'
+
 const handoffsSchema = z.object({
   page: z.string().optional().transform(Number).pipe(z.number().min(1).max(100)),
   status: z.enum(['PENDING', 'SENT', 'ACCEPTED', 'FAILED', 'CONVERTED']).optional(),

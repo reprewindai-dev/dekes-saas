@@ -1,9 +1,17 @@
-import { validateRequest, EcobeOptimizeRequestSchema, EcobeReportCarbonUsageRequestSchema, EcobeProspectPayloadSchema, EcobeTenantPayloadSchema, EcobeDemoPayloadSchema } from '../validation/ecobe-schemas'
+import {
+  validateRequest,
+  EcobeOptimizeRequestSchema,
+  EcobeReportCarbonUsageRequestSchema,
+  EcobeProspectPayloadSchema,
+  EcobeTenantPayloadSchema,
+  EcobeDemoPayloadSchema,
+} from '../validation/ecobe-schemas'
 import { isValidEcobeResponse, isValidEcobeStats, safeTypeAssertion } from '../utils/type-guards'
-import { createApiError, createNetworkError, createValidationError, classifyError, logError } from '../error/error-handler'
+import { createApiError, createNetworkError, classifyError, logError } from '../error/error-handler'
 
 const LEGACY_DEFAULT_BASE = 'http://localhost:3000'
 const MODERN_DEFAULT_BASE = 'https://api.ecobe.dev'
+const INTEGRATION_BASE_PATH = '/api/v1/integrations/dekes'
 
 export type EcobeOptimizeRequest = {
   query: {
@@ -93,30 +101,46 @@ function normalizeBaseUrl(url: string): string {
 }
 
 function getLegacyBaseUrl(): string {
-  // Standardize on ECOBE_ENGINE_URL for legacy endpoints
-  return normalizeBaseUrl(process.env.ECOBE_ENGINE_URL || LEGACY_DEFAULT_BASE)
+  return normalizeBaseUrl(
+    process.env.ECOBE_ENGINE_BASE_URL || process.env.ECOBE_ENGINE_URL || LEGACY_DEFAULT_BASE
+  )
+}
+
+function getSharedApiKey(): string {
+  const key =
+    process.env.DEKES_API_KEY ||
+    process.env.ECOBE_API_KEY ||
+    process.env.ECOBE_ENGINE_API_KEY
+
+  if (!key) {
+    throw new Error('Missing DEKES_API_KEY, ECOBE_API_KEY, or ECOBE_ENGINE_API_KEY')
+  }
+
+  return key
 }
 
 function getLegacyHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
-  const apiKey = process.env.ECOBE_ENGINE_API_KEY
-  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+
+  try {
+    headers.Authorization = `Bearer ${getSharedApiKey()}`
+  } catch {
+    // Keep legacy calls unauthenticated in local-only setups.
+  }
+
   return headers
 }
 
 function getModernBaseUrl(): string {
-  // Standardize on ECOBE_API_BASE_URL for modern endpoints, fallback to ECOBE_ENGINE_URL
-  return normalizeBaseUrl(process.env.ECOBE_API_BASE_URL || process.env.ECOBE_ENGINE_URL || MODERN_DEFAULT_BASE)
+  return normalizeBaseUrl(
+    process.env.ECOBE_API_BASE_URL || process.env.ECOBE_ENGINE_URL || MODERN_DEFAULT_BASE
+  )
 }
 
 function getModernApiKey(): string {
-  const key = process.env.ECOBE_API_KEY || process.env.ECOBE_ENGINE_API_KEY
-  if (!key) {
-    throw new Error('Missing required API key. Set ECOBE_API_KEY or ECOBE_ENGINE_API_KEY environment variable.')
-  }
-  return key
+  return getSharedApiKey()
 }
 
 async function callModernApi<T = any>(path: string, init: RequestInit): Promise<T> {
@@ -141,27 +165,25 @@ async function callModernApi<T = any>(path: string, init: RequestInit): Promise<
     if (res.status === 204) {
       return undefined as T
     }
-    
+
     const json = await res.json()
-    
-    // Runtime validation to ensure we're returning a valid ECOBE response
     const validatedResponse = safeTypeAssertion(
       json,
       isValidEcobeResponse,
       'Invalid ECOBE API response format'
     )
-    
+
     return validatedResponse as T
   } catch (error) {
     if (error instanceof Error && error.name === 'StandardError') {
       throw error
     }
-    
-    // Handle network errors and other unexpected errors
-    const standardError = error instanceof Error && error.message.includes('fetch') 
-      ? createNetworkError(`Failed to connect to ECOBE API: ${error.message}`, { path })
-      : classifyError(error)
-    
+
+    const standardError =
+      error instanceof Error && error.message.includes('fetch')
+        ? createNetworkError(`Failed to connect to ECOBE API: ${error.message}`, { path })
+        : classifyError(error)
+
     logError(standardError, { path, method: init.method })
     throw standardError
   }
@@ -186,9 +208,8 @@ function getAnalyticsUrl(): string {
 
 export async function ecobeOptimizeQuery(request: unknown): Promise<EcobeOptimizeResponse> {
   try {
-    // Validate input
     const validatedRequest = validateRequest(EcobeOptimizeRequestSchema, request)
-    
+
     const res = await fetch(getOptimizeUrl(), {
       method: 'POST',
       headers: getLegacyHeaders(),
@@ -203,13 +224,12 @@ export async function ecobeOptimizeQuery(request: unknown): Promise<EcobeOptimiz
       throw error
     }
 
-    const json = await res.json()
-    return json as EcobeOptimizeResponse
+    return (await res.json()) as EcobeOptimizeResponse
   } catch (error) {
     if (error instanceof Error && error.name === 'StandardError') {
       throw error
     }
-    
+
     const standardError = classifyError(error)
     logError(standardError, { endpoint: 'optimize' })
     throw standardError
@@ -217,9 +237,8 @@ export async function ecobeOptimizeQuery(request: unknown): Promise<EcobeOptimiz
 }
 
 export async function ecobeReportCarbonUsage(request: unknown): Promise<void> {
-  // Validate input
   const validatedRequest = validateRequest(EcobeReportCarbonUsageRequestSchema, request)
-  
+
   const res = await fetch(getReportUrl(), {
     method: 'POST',
     headers: getLegacyHeaders(),
@@ -246,8 +265,7 @@ export async function ecobeFetchAnalytics(): Promise<EcobeAnalyticsResponse> {
   }
 
   const json = await res.json()
-  
-  // Validate analytics response structure
+
   if (!isValidEcobeStats(json)) {
     throw new Error('Invalid analytics response format from ECOBE API')
   }
@@ -256,37 +274,40 @@ export async function ecobeFetchAnalytics(): Promise<EcobeAnalyticsResponse> {
 }
 
 export async function createEcobeProspect(payload: unknown) {
-  // Validate input
   const validatedPayload = validateRequest(EcobeProspectPayloadSchema, payload)
-  
-  return callModernApi<{ id: string; status: string; externalLeadId?: string }>('/api/v1/prospects', {
-    method: 'POST',
-    body: JSON.stringify(validatedPayload),
-  })
+
+  return callModernApi<{ id: string; status: string; externalLeadId?: string }>(
+    `${INTEGRATION_BASE_PATH}/prospects`,
+    {
+      method: 'POST',
+      body: JSON.stringify(validatedPayload),
+    }
+  )
 }
 
 export async function createEcobeTenant(payload: unknown) {
-  // Validate input
   const validatedPayload = validateRequest(EcobeTenantPayloadSchema, payload)
-  
-  return callModernApi<{ id: string; status: string; externalOrgId?: string }>('/api/v1/tenants', {
-    method: 'POST',
-    body: JSON.stringify(validatedPayload),
-  })
+
+  return callModernApi<{ id: string; status: string; externalOrgId?: string }>(
+    `${INTEGRATION_BASE_PATH}/tenants`,
+    {
+      method: 'POST',
+      body: JSON.stringify(validatedPayload),
+    }
+  )
 }
 
 export async function triggerEcobeDemo(payload: unknown) {
-  // Validate input
   const validatedPayload = validateRequest(EcobeDemoPayloadSchema, payload)
-  
-  return callModernApi<{ id: string; status: string }>('/api/v1/demos', {
+
+  return callModernApi<{ id: string; status: string }>(`${INTEGRATION_BASE_PATH}/demos`, {
     method: 'POST',
     body: JSON.stringify(validatedPayload),
   })
 }
 
 export async function getEcobeHandoffStatus(externalId: string) {
-  return callModernApi<EcobeHandoffStatusResponse>(`/api/v1/handoffs/${externalId}`, {
+  return callModernApi<EcobeHandoffStatusResponse>(`${INTEGRATION_BASE_PATH}/handoffs/${externalId}`, {
     method: 'GET',
   })
 }

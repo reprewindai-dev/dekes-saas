@@ -1,9 +1,18 @@
 import { validateRequest, EcobeRouteRequestSchema, EcobeCompleteRequestSchema } from '../validation/ecobe-schemas'
 
-const ECOBE_BASE = (process.env.ECOBE_API_BASE_URL || process.env.ECOBE_ENGINE_URL || 'https://api.ecobe.dev').replace(/\/+$/, '')
+const ECOBE_BASE = (
+  process.env.ECOBE_API_BASE_URL ||
+  process.env.ECOBE_ENGINE_URL ||
+  'https://api.ecobe.dev'
+).replace(/\/+$/, '')
+const ECOBE_INTEGRATION_BASE = `${ECOBE_BASE}/api/v1/integrations/dekes`
 
 function getHeaders(): Record<string, string> {
-  const key = process.env.ECOBE_API_KEY || process.env.ECOBE_ENGINE_API_KEY
+  const key =
+    process.env.DEKES_API_KEY ||
+    process.env.ECOBE_API_KEY ||
+    process.env.ECOBE_ENGINE_API_KEY
+
   return {
     'Content-Type': 'application/json',
     ...(key ? { Authorization: `Bearer ${key}` } : {}),
@@ -30,9 +39,7 @@ export type EcobeRouteAction = 'execute' | 'delay' | 'reroute'
 export type EcobeRouteResponse = {
   decisionId: string
   action: EcobeRouteAction
-  /** Region to run in (execute / reroute) */
   selectedRegion?: string
-  /** Alias used by reroute responses */
   target?: string
   predicted_clean_window?: {
     expected_minutes: number
@@ -52,10 +59,9 @@ export type EcobeCompleteRequest = {
 }
 
 export async function ecobeRouteWorkload(req: unknown): Promise<EcobeRouteResponse> {
-  // Validate input
   const validatedRequest = validateRequest(EcobeRouteRequestSchema, req)
-  
-  const res = await fetch(`${ECOBE_BASE}/api/v1/route`, {
+
+  const res = await fetch(`${ECOBE_INTEGRATION_BASE}/route`, {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify(validatedRequest),
@@ -71,10 +77,9 @@ export async function ecobeRouteWorkload(req: unknown): Promise<EcobeRouteRespon
 }
 
 export async function ecobeCompleteWorkload(req: unknown): Promise<void> {
-  // Validate input
   const validatedRequest = validateRequest(EcobeCompleteRequestSchema, req)
-  
-  const res = await fetch(`${ECOBE_BASE}/api/v1/workloads/complete`, {
+
+  const res = await fetch(`${ECOBE_INTEGRATION_BASE}/workloads/complete`, {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify(validatedRequest),

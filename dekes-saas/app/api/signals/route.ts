@@ -3,21 +3,22 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { createDekesEcobeIntegration, createSignalHarvestingEngine, createEvidenceEngine } from '@/lib/signals'
+import { createSignalIntegration } from '@/lib/signals/signal-integration'
+import { createSignalHarvestingEngine, createEvidenceEngine } from '@/lib/signals/harvesting-engine'
 import { createValidationError, createApiError, classifyError, logError } from '@/lib/error/error-handler'
-import { Logger } from '@/lib/logger'
+import { createLogger } from '@/lib/logger'
 
-const logger = new Logger('SignalIntelligenceAPI')
+const logger = createLogger('SignalIntelligenceAPI')
 
 // Initialize engines (in production, these would be singletons)
-let integration: ReturnType<typeof createDekesEcobeIntegration> | null = null
+let integration: ReturnType<typeof createSignalIntegration> | null = null
 let signalEngine: ReturnType<typeof createSignalHarvestingEngine> | null = null
 let evidenceEngine: ReturnType<typeof createEvidenceEngine> | null = null
 
 // Initialize engines on first request
 function getIntegration() {
   if (!integration) {
-    integration = createDekesEcobeIntegration()
+    integration = createSignalIntegration()
   }
   return integration
 }

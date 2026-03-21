@@ -360,7 +360,7 @@ export class SignalTestSuite {
 }
 
 // Quick test runner
-export async function runSignalTests(): Promise<void> {
+export async function runSignalTests(): Promise<any> {
   const testSuite = new SignalTestSuite()
   await testSuite.runAllTests()
   return testSuite.getResults()

@@ -30,3 +30,6 @@ extensions/
 # Run results (generated data)
 run_result*.json
 leads_snapshot*.json
+
+# Large zip archives
+*.zip

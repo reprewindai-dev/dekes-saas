@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { validateSession } from '@/lib/auth/jwt'
 import { leadDeduplication } from '@/lib/leads/deduplication'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
     const token = req.headers.get('authorization')?.replace('Bearer ', '')

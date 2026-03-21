@@ -20,10 +20,3 @@ export async function initializeJobs() {
   }
 }
 
-// Auto-initialize if this module is imported
-if (typeof window === 'undefined') {
-  // Server-side only
-  setTimeout(() => {
-    initializeJobs()
-  }, 5000) // Delay to ensure app is fully started
-}

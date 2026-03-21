@@ -1,5 +1,6 @@
 const LEGACY_DEFAULT_BASE = 'http://localhost:3000'
 const MODERN_DEFAULT_BASE = 'https://api.ecobe.dev'
+const INTEGRATION_BASE_PATH = '/api/v1/integrations/dekes'
 
 export type EcobeOptimizeRequest = {
   query: {
@@ -92,12 +93,28 @@ function getLegacyBaseUrl(): string {
   return normalizeBaseUrl(process.env.ECOBE_ENGINE_BASE_URL || process.env.ECOBE_ENGINE_URL || LEGACY_DEFAULT_BASE)
 }
 
+function getSharedApiKey(): string {
+  const key =
+    process.env.DEKES_API_KEY ||
+    process.env.ECOBE_API_KEY ||
+    process.env.ECOBE_ENGINE_API_KEY
+
+  if (!key) {
+    throw new Error('Missing DEKES_API_KEY, ECOBE_API_KEY, or ECOBE_ENGINE_API_KEY')
+  }
+
+  return key
+}
+
 function getLegacyHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
-  const apiKey = process.env.ECOBE_ENGINE_API_KEY
-  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+  try {
+    headers.Authorization = `Bearer ${getSharedApiKey()}`
+  } catch {
+    // Keep legacy calls unauthenticated in local-only setups.
+  }
   return headers
 }
 
@@ -106,9 +123,7 @@ function getModernBaseUrl(): string {
 }
 
 function getModernApiKey(): string {
-  const key = process.env.ECOBE_API_KEY || process.env.ECOBE_ENGINE_API_KEY
-  if (!key) throw new Error('Missing ECOBE_API_KEY or ECOBE_ENGINE_API_KEY')
-  return key
+  return getSharedApiKey()
 }
 
 async function callModernApi<T = any>(path: string, init: RequestInit): Promise<T> {
@@ -194,28 +209,28 @@ export async function ecobeFetchAnalytics(): Promise<EcobeAnalyticsResponse> {
 }
 
 export async function createEcobeProspect(payload: EcobeProspectPayload) {
-  return callModernApi<{ id: string; status: string; externalLeadId?: string }>('/api/v1/prospects', {
+  return callModernApi<{ id: string; status: string; externalLeadId?: string }>(`${INTEGRATION_BASE_PATH}/prospects`, {
     method: 'POST',
     body: JSON.stringify(payload),
   })
 }
 
 export async function createEcobeTenant(payload: EcobeTenantPayload) {
-  return callModernApi<{ id: string; status: string; externalOrgId?: string }>('/api/v1/tenants', {
+  return callModernApi<{ id: string; status: string; externalOrgId?: string }>(`${INTEGRATION_BASE_PATH}/tenants`, {
     method: 'POST',
     body: JSON.stringify(payload),
   })
 }
 
 export async function triggerEcobeDemo(payload: EcobeDemoPayload) {
-  return callModernApi<{ id: string; status: string }>('/api/v1/demos', {
+  return callModernApi<{ id: string; status: string }>(`${INTEGRATION_BASE_PATH}/demos`, {
     method: 'POST',
     body: JSON.stringify(payload),
   })
 }
 
 export async function getEcobeHandoffStatus(externalId: string) {
-  return callModernApi<EcobeHandoffStatusResponse>(`/api/v1/handoffs/${externalId}`, {
+  return callModernApi<EcobeHandoffStatusResponse>(`${INTEGRATION_BASE_PATH}/handoffs/${externalId}`, {
     method: 'GET',
   })
 }

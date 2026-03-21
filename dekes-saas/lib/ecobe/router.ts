@@ -1,7 +1,11 @@
 const ECOBE_BASE = (process.env.ECOBE_API_BASE_URL || process.env.ECOBE_ENGINE_URL || 'https://api.ecobe.dev').replace(/\/+$/, '')
+const ECOBE_INTEGRATION_BASE = `${ECOBE_BASE}/api/v1/integrations/dekes`
 
 function getHeaders(): Record<string, string> {
-  const key = process.env.ECOBE_API_KEY || process.env.ECOBE_ENGINE_API_KEY
+  const key =
+    process.env.DEKES_API_KEY ||
+    process.env.ECOBE_API_KEY ||
+    process.env.ECOBE_ENGINE_API_KEY
   return {
     'Content-Type': 'application/json',
     ...(key ? { Authorization: `Bearer ${key}` } : {}),
@@ -50,7 +54,7 @@ export type EcobeCompleteRequest = {
 }
 
 export async function ecobeRouteWorkload(req: EcobeRouteRequest): Promise<EcobeRouteResponse> {
-  const res = await fetch(`${ECOBE_BASE}/api/v1/route`, {
+  const res = await fetch(`${ECOBE_INTEGRATION_BASE}/route`, {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify(req),
@@ -66,7 +70,7 @@ export async function ecobeRouteWorkload(req: EcobeRouteRequest): Promise<EcobeR
 }
 
 export async function ecobeCompleteWorkload(req: EcobeCompleteRequest): Promise<void> {
-  const res = await fetch(`${ECOBE_BASE}/api/v1/workloads/complete`, {
+  const res = await fetch(`${ECOBE_INTEGRATION_BASE}/workloads/complete`, {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify(req),

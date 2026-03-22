@@ -12,34 +12,38 @@ import { createApiError, createNetworkError, classifyError, logError } from '../
  * Handles sending DKS workloads to CO₂Router for carbon-aware routing
  */
 export class DksWorkloadEmitter {
-  private baseUrl: string
-  private apiKey: string
-  private enabled: boolean
+  private _baseUrl: string | null = null
+  private _apiKey: string | null = null
+  private _enabled: boolean | null = null
 
-  constructor() {
-    this.baseUrl = this.getCo2RouterBaseUrl()
-    this.apiKey = this.getCo2RouterApiKey()
-    this.enabled = this.isEnabled()
-  }
-
-  private getCo2RouterBaseUrl(): string {
-    const url = process.env.CO2ROUTER_API_URL || process.env.ECOBE_ENGINE_URL
-    if (!url) {
-      throw new Error('CO2ROUTER_API_URL or ECOBE_ENGINE_URL environment variable is required')
+  // Lazy getters — env vars are only read at request time, not at module load
+  private get baseUrl(): string {
+    if (this._baseUrl === null) {
+      const url = process.env.CO2ROUTER_API_URL || process.env.ECOBE_ENGINE_URL
+      if (!url) {
+        throw new Error('CO2ROUTER_API_URL or ECOBE_ENGINE_URL environment variable is required')
+      }
+      this._baseUrl = url.replace(/\/$/, '')
     }
-    return url.replace(/\/$/, '')
+    return this._baseUrl
   }
 
-  private getCo2RouterApiKey(): string {
-    const key = process.env.CO2ROUTER_API_KEY || process.env.ECOBE_ENGINE_API_KEY
-    if (!key) {
-      throw new Error('CO2ROUTER_API_KEY or ECOBE_ENGINE_API_KEY environment variable is required')
+  private get apiKey(): string {
+    if (this._apiKey === null) {
+      const key = process.env.CO2ROUTER_API_KEY || process.env.ECOBE_ENGINE_API_KEY
+      if (!key) {
+        throw new Error('CO2ROUTER_API_KEY or ECOBE_ENGINE_API_KEY environment variable is required')
+      }
+      this._apiKey = key
     }
-    return key
+    return this._apiKey
   }
 
-  private isEnabled(): boolean {
-    return process.env.CO2ROUTER_INTEGRATION_ENABLED !== 'false'
+  private get enabled(): boolean {
+    if (this._enabled === null) {
+      this._enabled = process.env.CO2ROUTER_INTEGRATION_ENABLED !== 'false'
+    }
+    return this._enabled
   }
 
   /**
@@ -110,7 +114,6 @@ export class DksWorkloadEmitter {
             emittedAt: new Date().toISOString(),
           }
         }),
-        signal: false, // Don't follow redirects
       })
 
       if (!response.ok) {
@@ -179,7 +182,6 @@ export class DksWorkloadEmitter {
     }
 
     try {
-      // Validate outcome
       const validatedOutcome = DksWorkloadOutcomeSchema.parse(outcome)
 
       console.log(`[DKS→CO₂Router] Reporting outcome for command: ${validatedOutcome.commandId}`, {
@@ -208,13 +210,11 @@ export class DksWorkloadEmitter {
             reportedAt: new Date().toISOString(),
           }
         }),
-        signal: false,
       })
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error')
         console.error(`[DKS→CO₂Router] Failed to report outcome: ${response.status} ${errorText}`)
-        // Don't throw - outcome reporting failures shouldn't break DKS workflows
         return
       }
 
@@ -222,7 +222,6 @@ export class DksWorkloadEmitter {
 
     } catch (error) {
       console.error(`[DKS→CO₂Router] Error reporting outcome:`, error)
-      // Don't throw - outcome reporting failures shouldn't break DKS workflows
     }
   }
 
@@ -241,7 +240,6 @@ export class DksWorkloadEmitter {
           'Authorization': `Bearer ${this.apiKey}`,
           'User-Agent': 'DKS-SaaS/1.0'
         },
-        signal: false,
       })
 
       return { healthy: response.ok }
@@ -254,7 +252,7 @@ export class DksWorkloadEmitter {
   }
 }
 
-// Singleton instance
+// Singleton instance — constructor no longer throws, env vars checked lazily
 export const dksWorkloadEmitter = new DksWorkloadEmitter()
 
 /**
@@ -291,7 +289,7 @@ export async function emitDksWorkload(
     organizationId,
     userId: context.userId,
     workloadType,
-    estimatedCpuHours: context.estimatedQueries ? context.estimatedQueries * 0.01 : 0.1, // Rough estimate
+    estimatedCpuHours: context.estimatedQueries ? context.estimatedQueries * 0.01 : 0.1,
     durationMinutes: context.durationMinutes || 30,
     candidateRegions: options.candidateRegions,
     excludedRegions: options.excludedRegions,

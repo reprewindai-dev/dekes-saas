@@ -10,7 +10,7 @@ import { isValidEcobeResponse, isValidEcobeStats, safeTypeAssertion } from '../u
 import { createApiError, createNetworkError, classifyError, logError } from '../error/error-handler'
 
 const LEGACY_DEFAULT_BASE = 'http://localhost:3000'
-const MODERN_DEFAULT_BASE = 'https://api.ecobe.dev'
+const MODERN_DEFAULT_BASE = 'https://ecobe-engineclaude-production.up.railway.app'
 const INTEGRATION_BASE_PATH = '/api/v1/integrations/dekes'
 
 export type EcobeOptimizeRequest = {

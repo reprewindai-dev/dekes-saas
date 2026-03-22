@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     const settings = (organization.settings as any)?.ecobe || {
       enabled: false,
       apiKey: '',
-      baseUrl: 'https://api.ecobe.dev',
+      baseUrl: 'https://ecobe-engineclaude-production.up.railway.app',
       webhookSecret: '',
       autoHandoff: true,
       minQualificationScore: 70,

@@ -3,7 +3,7 @@ import { validateRequest, EcobeRouteRequestSchema, EcobeCompleteRequestSchema } 
 const ECOBE_BASE = (
   process.env.ECOBE_API_BASE_URL ||
   process.env.ECOBE_ENGINE_URL ||
-  'https://api.ecobe.dev'
+  'https://ecobe-engineclaude-production.up.railway.app'
 ).replace(/\/+$/, '')
 const ECOBE_INTEGRATION_BASE = `${ECOBE_BASE}/api/v1/integrations/dekes`
 

@@ -16,6 +16,15 @@ export async function GET() {
     const { prisma } = await import('@/lib/db')
     const count = await prisma.user.count()
     checks.prisma = { status: 'connected', userCount: count }
+
+    // Check if ECOBE migration has been applied
+    try {
+      const handoffCount = await prisma.ecobeHandoff.count()
+      const eventCount = await prisma.ecobeInboundEvent.count()
+      checks.ecobe_tables = { status: 'ok', handoffCount, eventCount }
+    } catch (tableErr: any) {
+      checks.ecobe_tables = { status: 'missing', message: tableErr.message }
+    }
   } catch (err: any) {
     checks.prisma = { status: 'error', message: err.message, name: err.name }
   }

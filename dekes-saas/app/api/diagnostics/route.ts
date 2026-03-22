@@ -29,5 +29,16 @@ export async function GET() {
     checks.jwt = { status: 'error', message: err.message }
   }
 
+  // Check integration env vars
+  checks.integrations = {
+    serpapi_key: process.env.SERPAPI_API_KEY ? 'SET' : 'MISSING',
+    ecobe_engine_url: process.env.ECOBE_ENGINE_URL || process.env.ECOBE_ENGINE_BASE_URL || 'MISSING',
+    co2router_api_url: process.env.CO2ROUTER_API_URL || 'MISSING',
+    co2router_api_key: process.env.CO2ROUTER_API_KEY ? 'SET' : 'MISSING',
+    ecobe_api_key: (process.env.ECOBE_API_KEY || process.env.DEKES_API_KEY) ? 'SET' : 'MISSING',
+    next_public_app_url: process.env.NEXT_PUBLIC_APP_URL || 'MISSING',
+    qstash_token: process.env.QSTASH_TOKEN ? 'SET' : 'MISSING',
+  }
+
   return NextResponse.json(checks)
 }

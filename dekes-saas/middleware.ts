@@ -49,9 +49,50 @@ export function middleware(req: NextRequest) {
     }
   }
 
+=======
+const PUBLIC_PATHS = [
+  '/auth/login',
+  '/auth/signup',
+  '/api/auth/login',
+  '/api/auth/signup',
+  '/api/auth/logout',
+  '/api/health',
+  '/api/webhooks',
+]
+
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname.startsWith(p))
+}
+
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl
+
+  // Allow public paths, static assets, and API routes that handle their own auth
+  if (isPublicPath(pathname)) {
+    return NextResponse.next()
+  }
+
+  // Landing page is public
+  if (pathname === '/') {
+    return NextResponse.next()
+  }
+
+  // Protected routes: check for session cookie
+  const sessionToken = req.cookies.get('DEKES_SESSION')?.value
+
+  if (!sessionToken) {
+    const loginUrl = req.nextUrl.clone()
+    loginUrl.pathname = '/auth/login'
+    loginUrl.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  // Token exists — let the page-level /api/user/me call do full validation
+  // (middleware can't make async DB calls in Edge runtime)
+>>>>>>> e7c8e3a (fix: dekes runtime, auth flow, env validation, and health endpoint)
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 }

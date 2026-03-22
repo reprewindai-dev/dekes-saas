@@ -38,6 +38,7 @@ function LoginForm() {
       const from = searchParams.get('from')
       const destination = from && from.startsWith('/') ? from : '/dashboard'
       router.push(destination)
+      const redirectTo = searchParams.get('redirect') || '/dashboard'
     } catch (err: any) {
       setError(err.message)
     } finally {

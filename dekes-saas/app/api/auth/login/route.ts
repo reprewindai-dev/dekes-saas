@@ -110,4 +110,31 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     res.headers.set('X-RateLimit-Reset', String(rateLimitResult.resetTime || 0))
 
     return res
-})
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: error.errors[0].message }, { status: 400 })
+    }
+
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('Login error:', message)
+
+    // Surface config errors clearly so Railway logs show the root cause
+    if (message.includes('Missing JWT_SECRET')) {
+      return NextResponse.json({ error: 'Server configuration error: JWT_SECRET not set' }, { status: 500 })
+    }
+
+    // Prisma connection failures
+    if (
+      message.includes('Can\'t reach database') ||
+      message.includes('PrismaClientInitializationError') ||
+      message.includes('ECONNREFUSED') ||
+      message.includes('libssl')
+    ) {
+      console.error('Database connection failed during login:', message)
+      return NextResponse.json({ error: 'Database connection error' }, { status: 503 })
+    }
+
+    return NextResponse.json({ error: 'Failed to log in' }, { status: 500 })
+  }
+}
+>>>>>>> e7c8e3a (fix: dekes runtime, auth flow, env validation, and health endpoint)

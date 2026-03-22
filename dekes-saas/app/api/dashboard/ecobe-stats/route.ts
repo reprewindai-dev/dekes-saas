@@ -74,14 +74,14 @@ export async function GET(req: NextRequest) {
       
       // Monthly stats for the last 6 months using Prisma query builder
       prisma.$queryRaw`
-        SELECT 
-          DATE_TRUNC('month', created_at) as month,
+        SELECT
+          DATE_TRUNC('month', "createdAt") as month,
           COUNT(*)::integer as handoffs,
           COUNT(CASE WHEN status = 'CONVERTED' THEN 1 END)::integer as conversions
-        FROM ecobe_handoffs 
-        WHERE organization_id = ${organizationId}
-          AND created_at >= NOW() - INTERVAL '6 months'
-        GROUP BY DATE_TRUNC('month', created_at)
+        FROM "EcobeHandoff"
+        WHERE "organizationId" = ${organizationId}
+          AND "createdAt" >= NOW() - INTERVAL '6 months'
+        GROUP BY DATE_TRUNC('month', "createdAt")
         ORDER BY month DESC
       `
     ]) as [

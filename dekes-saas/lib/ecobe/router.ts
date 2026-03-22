@@ -58,13 +58,9 @@ export type EcobeCompleteRequest = {
   status: 'success' | 'failed' | 'partial'
 }
 
-<<<<<<< HEAD
 export async function ecobeRouteWorkload(req: unknown): Promise<EcobeRouteResponse> {
   const validatedRequest = validateRequest(EcobeRouteRequestSchema, req)
 
-=======
-export async function ecobeRouteWorkload(req: EcobeRouteRequest): Promise<EcobeRouteResponse> {
->>>>>>> 154f46f (Connect DEKES SaaS to live ECOBE endpoints)
   const res = await fetch(`${ECOBE_INTEGRATION_BASE}/route`, {
     method: 'POST',
     headers: getHeaders(),
@@ -80,13 +76,9 @@ export async function ecobeRouteWorkload(req: EcobeRouteRequest): Promise<EcobeR
   return (await res.json()) as EcobeRouteResponse
 }
 
-<<<<<<< HEAD
 export async function ecobeCompleteWorkload(req: unknown): Promise<void> {
   const validatedRequest = validateRequest(EcobeCompleteRequestSchema, req)
 
-=======
-export async function ecobeCompleteWorkload(req: EcobeCompleteRequest): Promise<void> {
->>>>>>> 154f46f (Connect DEKES SaaS to live ECOBE endpoints)
   const res = await fetch(`${ECOBE_INTEGRATION_BASE}/workloads/complete`, {
     method: 'POST',
     headers: getHeaders(),

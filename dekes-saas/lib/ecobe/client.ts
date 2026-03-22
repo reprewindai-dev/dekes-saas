@@ -119,19 +119,6 @@ function getSharedApiKey(): string {
   return key
 }
 
-function getSharedApiKey(): string {
-  const key =
-    process.env.DEKES_API_KEY ||
-    process.env.ECOBE_API_KEY ||
-    process.env.ECOBE_ENGINE_API_KEY
-
-  if (!key) {
-    throw new Error('Missing DEKES_API_KEY, ECOBE_API_KEY, or ECOBE_ENGINE_API_KEY')
-  }
-
-  return key
-}
-
 function getLegacyHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -286,7 +273,6 @@ export async function ecobeFetchAnalytics(): Promise<EcobeAnalyticsResponse> {
   return json as EcobeAnalyticsResponse
 }
 
-<<<<<<< HEAD
 export async function createEcobeProspect(payload: unknown) {
   const validatedPayload = validateRequest(EcobeProspectPayloadSchema, payload)
 
@@ -314,23 +300,6 @@ export async function createEcobeTenant(payload: unknown) {
 export async function triggerEcobeDemo(payload: unknown) {
   const validatedPayload = validateRequest(EcobeDemoPayloadSchema, payload)
 
-=======
-export async function createEcobeProspect(payload: EcobeProspectPayload) {
-  return callModernApi<{ id: string; status: string; externalLeadId?: string }>(`${INTEGRATION_BASE_PATH}/prospects`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function createEcobeTenant(payload: EcobeTenantPayload) {
-  return callModernApi<{ id: string; status: string; externalOrgId?: string }>(`${INTEGRATION_BASE_PATH}/tenants`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function triggerEcobeDemo(payload: EcobeDemoPayload) {
->>>>>>> 154f46f (Connect DEKES SaaS to live ECOBE endpoints)
   return callModernApi<{ id: string; status: string }>(`${INTEGRATION_BASE_PATH}/demos`, {
     method: 'POST',
     body: JSON.stringify(validatedPayload),

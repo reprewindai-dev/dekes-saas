@@ -18,11 +18,11 @@ const loginSchema = z.object({
 export const POST = withErrorHandling(async (request: NextRequest) => {
   const requestId = generateRequestId()
   const logger = authLogger.child('login')
-  
+
   // Apply rate limiting
   const identifier = getClientIdentifier(request)
   const rateLimitResult = authRateLimiter.isAllowed(identifier)
-  
+
   if (!rateLimitResult.allowed) {
     throw createApiError(429, 'Too many login attempts. Please try again later.', {
       identifier,
@@ -33,108 +33,81 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Parse and validate request body
   const body = await request.json()
   const data = validateRequest(loginSchema, body, { requestId })
-  
+
   logger.info('Login request validated', {
     requestId,
     email: data.email
   })
 
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email: data.email },
-      include: { organization: true },
-    })
+  // Find user
+  const user = await prisma.user.findUnique({
+    where: { email: data.email },
+    include: { organization: true },
+  })
 
-    if (!user) {
-      throw createApiError(401, 'Invalid credentials', undefined, { requestId })
-    }
-
-    // Check if user is active
-    if (user.status !== 'ACTIVE') {
-      throw createApiError(403, 'Account is suspended', { status: user.status }, { requestId })
-    }
-
-    // Verify password
-    const valid = await verifyPassword(data.password, user.passwordHash)
-    if (!valid) {
-      throw createApiError(401, 'Invalid credentials', undefined, { requestId })
-    }
-
-    // Update last login
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    })
-
-    // Create session
-    const token = await createSession(
-      user.id,
-      request.headers.get('x-forwarded-for') || undefined,
-      request.headers.get('user-agent') || undefined
-    )
-    
-    logger.info('Login successful', {
-      requestId,
-      userId: user.id,
-      organizationId: user.organizationId
-    })
-
-    const response: LoginResponse = {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        organizationId: user.organizationId,
-        role: user.role,
-      },
-      token,
-    }
-
-    // Create response with cookies
-    const res = createSuccessResponse(response, { requestId })
-    
-    // Set session cookie
-    res.cookies.set({
-      name: 'DEKES_SESSION',
-      value: token,
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 7,
-    })
-
-    // Add rate limit headers
-    res.headers.set('X-RateLimit-Limit', '5')
-    res.headers.set('X-RateLimit-Remaining', String(rateLimitResult.remaining || 0))
-    res.headers.set('X-RateLimit-Reset', String(rateLimitResult.resetTime || 0))
-
-    return res
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors[0].message }, { status: 400 })
-    }
-
-    const message = error instanceof Error ? error.message : String(error)
-    console.error('Login error:', message)
-
-    // Surface config errors clearly so Railway logs show the root cause
-    if (message.includes('Missing JWT_SECRET')) {
-      return NextResponse.json({ error: 'Server configuration error: JWT_SECRET not set' }, { status: 500 })
-    }
-
-    // Prisma connection failures
-    if (
-      message.includes('Can\'t reach database') ||
-      message.includes('PrismaClientInitializationError') ||
-      message.includes('ECONNREFUSED') ||
-      message.includes('libssl')
-    ) {
-      console.error('Database connection failed during login:', message)
-      return NextResponse.json({ error: 'Database connection error' }, { status: 503 })
-    }
-
-    return NextResponse.json({ error: 'Failed to log in' }, { status: 500 })
+  if (!user) {
+    throw createApiError(401, 'Invalid credentials', undefined, { requestId })
   }
-}
->>>>>>> e7c8e3a (fix: dekes runtime, auth flow, env validation, and health endpoint)
+
+  // Check if user is active
+  if (user.status !== 'ACTIVE') {
+    throw createApiError(403, 'Account is suspended', { status: user.status }, { requestId })
+  }
+
+  // Verify password
+  const valid = await verifyPassword(data.password, user.passwordHash)
+  if (!valid) {
+    throw createApiError(401, 'Invalid credentials', undefined, { requestId })
+  }
+
+  // Update last login
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  })
+
+  // Create session
+  const token = await createSession(
+    user.id,
+    request.headers.get('x-forwarded-for') || undefined,
+    request.headers.get('user-agent') || undefined
+  )
+
+  logger.info('Login successful', {
+    requestId,
+    userId: user.id,
+    organizationId: user.organizationId
+  })
+
+  const response: LoginResponse = {
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      organizationId: user.organizationId,
+      role: user.role,
+    },
+    token,
+  }
+
+  // Create response with cookies
+  const res = createSuccessResponse(response, { requestId })
+
+  // Set session cookie
+  res.cookies.set({
+    name: 'DEKES_SESSION',
+    value: token,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 7,
+  })
+
+  // Add rate limit headers
+  res.headers.set('X-RateLimit-Limit', '5')
+  res.headers.set('X-RateLimit-Remaining', String(rateLimitResult.remaining || 0))
+  res.headers.set('X-RateLimit-Reset', String(rateLimitResult.resetTime || 0))
+
+  return res
+})

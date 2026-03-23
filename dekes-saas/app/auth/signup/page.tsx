@@ -62,15 +62,16 @@ export default function SignupPage() {
           <p className="text-slate-400 mb-8">Start finding better leads today</p>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+            <div role="alert" className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
+              <label htmlFor="signup-email" className="block text-sm font-medium text-slate-300 mb-2">Email</label>
               <input
+                id="signup-email"
                 type="email"
                 name="email"
                 required
@@ -80,8 +81,9 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Full Name</label>
+              <label htmlFor="signup-name" className="block text-sm font-medium text-slate-300 mb-2">Full Name</label>
               <input
+                id="signup-name"
                 type="text"
                 name="name"
                 className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
@@ -90,8 +92,9 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Organization Name</label>
+              <label htmlFor="signup-organization" className="block text-sm font-medium text-slate-300 mb-2">Organization Name</label>
               <input
+                id="signup-organization"
                 type="text"
                 name="organizationName"
                 className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
@@ -100,8 +103,9 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
+              <label htmlFor="signup-password" className="block text-sm font-medium text-slate-300 mb-2">Password</label>
               <input
+                id="signup-password"
                 type="password"
                 name="password"
                 required

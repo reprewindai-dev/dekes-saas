@@ -5,10 +5,10 @@ import { verifyPassword } from '@/lib/auth/password'
 import { createSession } from '@/lib/auth/jwt'
 import { z } from 'zod'
 import { authRateLimiter, getClientIdentifier } from '@/lib/rate-limiting'
-import { authLogger, generateRequestId, logApiError } from '@/lib/logger'
-import { withErrorHandling, validateRequest, createSuccessResponse, checkRateLimit } from '@/lib/api/middleware'
-import { createValidationError, createApiError } from '@/lib/error/error-handler'
-import type { LoginResponse, ErrorResponse } from '@/types'
+import { authLogger, generateRequestId } from '@/lib/logger'
+import { withErrorHandling, validateRequest, createSuccessResponse } from '@/lib/api/middleware'
+import { createApiError } from '@/lib/error/error-handler'
+import type { LoginResponse } from '@/types'
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -21,7 +21,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
 
   // Apply rate limiting
   const identifier = getClientIdentifier(request)
-  const rateLimitResult = authRateLimiter.isAllowed(identifier)
+  const rateLimitResult = await authRateLimiter.isAllowed(identifier)
 
   if (!rateLimitResult.allowed) {
     throw createApiError(429, 'Too many login attempts. Please try again later.', {
@@ -87,7 +87,6 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
       organizationId: user.organizationId,
       role: user.role,
     },
-    token,
   }
 
   // Create response with cookies

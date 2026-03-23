@@ -23,7 +23,7 @@ const signupSchema = z.object({
 export async function POST(request: Request) {
   // Apply rate limiting
   const identifier = getClientIdentifier(request)
-  const rateLimitResult = authRateLimiter.isAllowed(identifier)
+  const rateLimitResult = await authRateLimiter.isAllowed(identifier)
   
   if (!rateLimitResult.allowed) {
     return NextResponse.json(
@@ -103,7 +103,6 @@ export async function POST(request: Request) {
         name: organization.owner.name,
         organizationId: organization.id,
       },
-      token,
     })
 
     // Add rate limit headers
@@ -133,8 +132,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Email already registered' }, { status: 400 })
       }
 
-      // Include Prisma error code in all environments so production issues can be diagnosed quickly.
-      return NextResponse.json({ error: `Database error (${error.code})` }, { status: 500 })
+      return NextResponse.json({ error: 'Database error' }, { status: 500 })
     }
 
     const message = error instanceof Error ? error.message : String(error)

@@ -53,15 +53,16 @@ function LoginForm() {
           <p className="text-slate-400 mb-8">Log in to your DEKES account</p>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+            <div role="alert" className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
+              <label htmlFor="login-email" className="block text-sm font-medium text-slate-300 mb-2">Email</label>
               <input
+                id="login-email"
                 type="email"
                 name="email"
                 required
@@ -71,8 +72,9 @@ function LoginForm() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-slate-300 mb-2">Password</label>
               <input
+                id="login-password"
                 type="password"
                 name="password"
                 required

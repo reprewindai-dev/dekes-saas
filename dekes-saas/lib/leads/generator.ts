@@ -21,12 +21,95 @@ export type LeadGenerationResult = {
   requested: number
   attempted: number
   inserted: number
+  rejected: number
   leads: Prisma.LeadUncheckedCreateInput[]
 }
 
 const SOURCE = 'SERPAPI_GOOGLE'
 const MIN_SCORE = 45
 const MAX_SCORE = 98
+
+// ── Hard Reject Filter ──────────────────────────────────────────────────────
+// Rejects junk results BEFORE scoring. These are structurally useless for
+// buyer identification: aggregator lists, platform URLs, directories.
+
+const REJECTED_TITLE_PATTERNS = /\b(top\s+\d+|best\s+\d+|top\s+\w+\s+\d+|best\s+\w+\s+\d+|list\s+of|directory|companies\s+to|agencies\s+to|platforms\s+to|roundup|round-up|alternatives\s+to|vs\s+|versus|comparison|compared|review\s+of|reviews\s+of|\d+\s+best|\d+\s+top)\b/i
+
+const REJECTED_DOMAINS = new Set([
+  'youtube.com',
+  'linkedin.com',
+  'reddit.com',
+  'facebook.com',
+  'instagram.com',
+  'twitter.com',
+  'x.com',
+  'medium.com',
+  'clutch.co',
+  'g2.com',
+  'capterra.com',
+  'trustpilot.com',
+  'yelp.com',
+  'glassdoor.com',
+  'crunchbase.com',
+  'wikipedia.org',
+  'pinterest.com',
+  'tiktok.com',
+  'quora.com',
+  'indeed.com',
+  'bbb.org',
+  'forbes.com',
+  'inc.com',
+  'entrepreneur.com',
+  'hubspot.com',
+  'nerdwallet.com',
+  'themanifest.com',
+  'goodfirms.co',
+  'designrush.com',
+  'sortlist.com',
+  'upcity.com',
+  'expertise.com',
+])
+
+const REJECTED_PATH_PATTERNS = /\/(blog|news|article|press|wiki|category|tag|archive|search|forum|thread|discussion|listicle)\b/i
+
+function extractDomain(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '').toLowerCase()
+  } catch {
+    return null
+  }
+}
+
+type RejectReason = 'title_pattern' | 'platform_domain' | 'aggregator_path' | null
+
+function shouldRejectResult(title: string | null | undefined, url: string): RejectReason {
+  // 1. Title pattern check
+  if (title && REJECTED_TITLE_PATTERNS.test(title)) {
+    return 'title_pattern'
+  }
+
+  // 2. Domain blocklist check
+  const domain = extractDomain(url)
+  if (domain) {
+    for (const blocked of REJECTED_DOMAINS) {
+      if (domain === blocked || domain.endsWith('.' + blocked)) {
+        return 'platform_domain'
+      }
+    }
+  }
+
+  // 3. Aggregator/article path patterns
+  try {
+    const path = new URL(url).pathname
+    if (REJECTED_PATH_PATTERNS.test(path)) {
+      return 'aggregator_path'
+    }
+  } catch {
+    // invalid URL, don't reject on path
+  }
+
+  return null // passes filter
+}
 
 function normalizeGl(region?: string): string | undefined {
   if (!region) return undefined
@@ -63,6 +146,8 @@ export async function generateLeadsFromSearch(
   // Load feedback-calibrated scoring weights (defaults to 1.0 if no feedback yet)
   const weights = await getCalibratedWeights()
 
+  let rejectedCount = 0
+
   // Process leads sequentially to handle async AI classification properly
   for (const [idx, result] of searchResults.entries()) {
     const link = result.link || result.displayed_link
@@ -70,6 +155,14 @@ export async function generateLeadsFromSearch(
 
     const canonicalUrl = link.trim()
     if (!canonicalUrl) continue
+
+    // ── HARD REJECT FILTER — runs BEFORE scoring/AI to save cost ────────
+    const rejectReason = shouldRejectResult(result.title, canonicalUrl)
+    if (rejectReason) {
+      rejectedCount++
+      console.log(`[DEKES] Rejected result: ${rejectReason} | ${result.title?.substring(0, 60)} | ${extractDomain(canonicalUrl)}`)
+      continue
+    }
 
     const canonicalHash = hashCanonical(canonicalUrl, options.organizationId)
     const baseScore = scoreFromPosition(idx)
@@ -247,10 +340,13 @@ export async function generateLeadsFromSearch(
     }
   }
 
+  console.log(`[DEKES] Lead generation complete: ${created.length} inserted, ${rejectedCount} rejected out of ${searchResults.length} results`)
+
   return {
     requested: searchResults.length,
-    attempted: searchResults.length,
+    attempted: searchResults.length - rejectedCount,
     inserted: created.length,
+    rejected: rejectedCount,
     leads: created,
   }
 }

@@ -1,22 +1,17 @@
-import { 
-  DksWorkloadPayload, 
-  DksWorkloadResponse, 
+import {
+  DksWorkloadPayload,
+  DksWorkloadResponse,
   DksWorkloadOutcome,
   DksWorkloadPayloadSchema,
-  DksWorkloadOutcomeSchema
+  DksWorkloadOutcomeSchema,
 } from './dks-workload-schema'
 import { createApiError, createNetworkError, classifyError, logError } from '../error/error-handler'
 
-/**
- * DKS → CO₂Router Workload Emitter
- * Handles sending DKS workloads to CO₂Router for carbon-aware routing
- */
 export class DksWorkloadEmitter {
   private _baseUrl: string | null = null
   private _apiKey: string | null = null
   private _enabled: boolean | null = null
 
-  // Lazy getters — env vars are only read at request time, not at module load
   private get baseUrl(): string {
     if (this._baseUrl === null) {
       const url = process.env.CO2ROUTER_API_URL || process.env.ECOBE_ENGINE_URL
@@ -46,43 +41,40 @@ export class DksWorkloadEmitter {
     return this._enabled
   }
 
-  /**
-   * Send a DKS workload to CO₂Router for carbon-aware routing
-   */
   async emitWorkload(payload: Omit<DksWorkloadPayload, 'sourceApp'>): Promise<DksWorkloadResponse> {
     if (!this.enabled) {
-      console.warn('CO₂Router integration disabled, skipping workload emission')
       return {
         success: false,
         error: {
           code: 'INTEGRATION_DISABLED',
-          message: 'CO₂Router integration is disabled'
-        }
+          message: 'CO2Router integration is disabled',
+        },
       }
     }
 
     try {
-      // Validate payload
       const validatedPayload = DksWorkloadPayloadSchema.parse({
         ...payload,
-        sourceApp: 'dks' as const
+        sourceApp: 'dks' as const,
       })
 
-      console.log(`[DKS→CO₂Router] Emitting workload: ${validatedPayload.workloadId}`, {
+      console.log(`[DKS->CO2Router] Emitting workload: ${validatedPayload.workloadId}`, {
         type: validatedPayload.workloadType,
-        org: validatedPayload.organizationId,
-        regions: validatedPayload.candidateRegions
+        org: validatedPayload.orgId,
+        regions: validatedPayload.candidateRegions,
       })
 
       const response = await fetch(`${this.baseUrl}/api/v1/command`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
-          'User-Agent': 'DKS-SaaS/1.0'
+          Authorization: `Bearer ${this.apiKey}`,
+          'User-Agent': 'DKS-SaaS/1.0',
         },
         body: JSON.stringify({
-          orgId: validatedPayload.organizationId,
+          orgId: validatedPayload.orgId,
+          workloadId: validatedPayload.workloadId,
+          sourceApp: 'dks',
           workload: {
             type: validatedPayload.workloadType,
             modelFamily: validatedPayload.metadata?.signalType,
@@ -101,7 +93,9 @@ export class DksWorkloadEmitter {
           },
           execution: {
             mode: validatedPayload.allowTimeShifting ? 'scheduled' : 'immediate',
-            candidateStartWindowHours: validatedPayload.durationMinutes ? Math.ceil(validatedPayload.durationMinutes / 60) : undefined,
+            candidateStartWindowHours: validatedPayload.durationMinutes
+              ? Math.ceil(validatedPayload.durationMinutes / 60)
+              : undefined,
           },
           preferences: {
             allowTimeShifting: validatedPayload.allowTimeShifting,
@@ -112,94 +106,74 @@ export class DksWorkloadEmitter {
             ...validatedPayload.metadata,
             sourceApp: 'dks',
             emittedAt: new Date().toISOString(),
-          }
+          },
         }),
       })
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error')
-        const error = createApiError(
-          response.status, 
-          `CO₂Router API error (${response.status}): ${errorText}`
-        )
-        logError(error, { 
+        const error = createApiError(response.status, `CO2Router API error (${response.status}): ${errorText}`)
+        logError(error, {
           workloadId: payload.workloadId,
           endpoint: '/api/v1/command',
-          status: response.status 
+          status: response.status,
         })
         throw error
       }
 
       const result = await response.json()
-      
-      console.log(`[DKS→CO₂Router] Workload routed successfully: ${validatedPayload.workloadId}`, {
-        commandId: result.commandId,
-        selectedRegion: result.recommendation?.selectedRegion,
-        estimatedCO2: result.recommendation?.estimatedCO2
-      })
-
       return {
         success: true,
         commandId: result.commandId,
-        recommendation: result.recommendation
+        recommendation: result.recommendation,
       }
-
     } catch (error) {
       if (error instanceof Error && error.name === 'StandardError') {
         throw error
       }
 
-      const standardError = error instanceof Error && error.message.includes('fetch')
-        ? createNetworkError(`Failed to connect to CO₂Router: ${error.message}`, { 
-            workloadId: payload.workloadId,
-            endpoint: '/api/v1/command'
-          })
-        : classifyError(error)
+      const standardError =
+        error instanceof Error && error.message.includes('fetch')
+          ? createNetworkError(`Failed to connect to CO2Router: ${error.message}`, {
+              workloadId: payload.workloadId,
+              endpoint: '/api/v1/command',
+            })
+          : classifyError(error)
 
-      logError(standardError, { 
+      logError(standardError, {
         workloadId: payload.workloadId,
-        action: 'emit_workload'
+        action: 'emit_workload',
       })
 
-      // Return error response instead of throwing to avoid breaking DKS workflows
       return {
         success: false,
         error: {
           code: standardError.code || 'EMISSION_FAILED',
-          message: standardError.message || 'Failed to emit workload to CO₂Router'
-        }
+          message: standardError.message || 'Failed to emit workload to CO2Router',
+        },
       }
     }
   }
 
-  /**
-   * Report actual workload execution outcome back to CO₂Router
-   */
   async reportOutcome(outcome: DksWorkloadOutcome): Promise<void> {
     if (!this.enabled) {
-      console.warn('CO₂Router integration disabled, skipping outcome reporting')
       return
     }
 
     try {
       const validatedOutcome = DksWorkloadOutcomeSchema.parse(outcome)
 
-      console.log(`[DKS→CO₂Router] Reporting outcome for command: ${validatedOutcome.commandId}`, {
-        region: validatedOutcome.execution.actualRegion,
-        completed: validatedOutcome.status.completed,
-        emissions: validatedOutcome.emissions?.actualEmissionsKgCo2e
-      })
-
       const response = await fetch(`${this.baseUrl}/api/v1/outcome`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
-          'User-Agent': 'DKS-SaaS/1.0'
+          Authorization: `Bearer ${this.apiKey}`,
+          'User-Agent': 'DKS-SaaS/1.0',
         },
         body: JSON.stringify({
           commandId: validatedOutcome.commandId,
-          orgId: validatedOutcome.metadata?.organizationId || 'unknown',
+          orgId: validatedOutcome.orgId,
+          sourceApp: 'dks',
           execution: validatedOutcome.execution,
           emissions: validatedOutcome.emissions,
           cost: validatedOutcome.cost,
@@ -208,56 +182,45 @@ export class DksWorkloadEmitter {
             ...validatedOutcome.metadata,
             sourceApp: 'dks',
             reportedAt: new Date().toISOString(),
-          }
+          },
         }),
       })
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error')
-        console.error(`[DKS→CO₂Router] Failed to report outcome: ${response.status} ${errorText}`)
-        return
+        console.error(`[DKS->CO2Router] Failed to report outcome: ${response.status} ${errorText}`)
       }
-
-      console.log(`[DKS→CO₂Router] Outcome reported successfully: ${validatedOutcome.commandId}`)
-
     } catch (error) {
-      console.error(`[DKS→CO₂Router] Error reporting outcome:`, error)
+      console.error('[DKS->CO2Router] Error reporting outcome:', error)
     }
   }
 
-  /**
-   * Check if CO₂Router integration is healthy
-   */
   async healthCheck(): Promise<{ healthy: boolean; error?: string }> {
     if (!this.enabled) {
       return { healthy: false, error: 'Integration disabled' }
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/api/v1/health`, {
+      const response = await fetch(`${this.baseUrl}/health`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'User-Agent': 'DKS-SaaS/1.0'
+          Authorization: `Bearer ${this.apiKey}`,
+          'User-Agent': 'DKS-SaaS/1.0',
         },
       })
 
       return { healthy: response.ok }
     } catch (error) {
-      return { 
-        healthy: false, 
-        error: error instanceof Error ? error.message : 'Unknown health check error' 
+      return {
+        healthy: false,
+        error: error instanceof Error ? error.message : 'Unknown health check error',
       }
     }
   }
 }
 
-// Singleton instance — constructor no longer throws, env vars checked lazily
 export const dksWorkloadEmitter = new DksWorkloadEmitter()
 
-/**
- * Convenience function to emit a workload with common DKS context
- */
 export async function emitDksWorkload(
   workloadType: DksWorkloadPayload['workloadType'],
   organizationId: string,
@@ -278,15 +241,13 @@ export async function emitDksWorkload(
     excludedRegions?: string[]
     maxLatencyMs?: number
     deadlineAt?: string
-  } = {}
+  } = {},
 ): Promise<DksWorkloadResponse> {
-  
-  const workloadId = `dks-${workloadType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-  
+  const workloadId = `dks-${workloadType}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+
   return dksWorkloadEmitter.emitWorkload({
     workloadId,
-    sourceApp: 'dks',
-    organizationId,
+    orgId: organizationId,
     userId: context.userId,
     workloadType,
     estimatedCpuHours: context.estimatedQueries ? context.estimatedQueries * 0.01 : 0.1,
@@ -306,9 +267,13 @@ export async function emitDksWorkload(
       signalType: context.signalType,
       signalCount: context.signalCount,
       estimatedQueries: context.estimatedQueries,
-      complexity: context.estimatedQueries ? 
-        (context.estimatedQueries > 1000 ? 'complex' : context.estimatedQueries > 100 ? 'medium' : 'simple') : 
-        'simple'
-    }
+      complexity: context.estimatedQueries
+        ? context.estimatedQueries > 1000
+          ? 'complex'
+          : context.estimatedQueries > 100
+            ? 'medium'
+            : 'simple'
+        : 'simple',
+    },
   })
 }

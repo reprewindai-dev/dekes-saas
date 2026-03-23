@@ -88,12 +88,18 @@ export async function POST(req: NextRequest) {
       }, { status: 409 })
     }
 
+    const leadMeta = ((lead.meta || {}) as LeadMeta) ?? {}
+    const enrichmentMeta = ((lead.enrichmentMeta || {}) as LeadMeta) ?? {}
+
     const handoffPayload: HandoffPayload = {
       organization: {
         name: lead.organization.name,
-        domain: (lead.meta as LeadMeta)?.domain || null,
-        sizeLabel: (lead.meta as LeadMeta)?.sizeLabel || null,
-        region: (lead.meta as LeadMeta)?.region || null,
+        domain: leadMeta.domain || null,
+        sizeLabel:
+          (typeof enrichmentMeta.companySize === 'string' ? enrichmentMeta.companySize : null) ||
+          leadMeta.sizeLabel ||
+          null,
+        region: leadMeta.region || null,
       },
       intent: {
         score: qualification.score,
@@ -101,9 +107,12 @@ export async function POST(req: NextRequest) {
         keywords: qualification.signals,
       },
       contact: {
-        name: (lead.meta as LeadMeta)?.contactName || null,
-        email: (lead.meta as LeadMeta)?.contactEmail || null,
-        linkedin: (lead.meta as LeadMeta)?.linkedin || null,
+        name: leadMeta.contactName || null,
+        email: leadMeta.contactEmail || null,
+        linkedin:
+          (typeof enrichmentMeta.linkedin === 'string' ? enrichmentMeta.linkedin : null) ||
+          leadMeta.linkedin ||
+          null,
       },
       source: {
         leadId: lead.id,

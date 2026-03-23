@@ -86,7 +86,7 @@ function EcobeInboundEventsPanelInner() {
         setError(null)
         const result = await cacheStrategies.realtime('/api/dashboard/ecobe-signals', { 
           credentials: 'include' 
-        })
+        }) as EcobeSignalsData | null
         
         if (result && result.counts) {
           setData(result)

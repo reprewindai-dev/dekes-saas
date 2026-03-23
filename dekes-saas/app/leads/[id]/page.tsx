@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ExternalLink, Send, Activity } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Activity, CheckCircle2, Clock3, XCircle } from 'lucide-react'
 import LeadHandoffSection from '@/components/ecobe/lead-handoff-section'
 
 interface Lead {
@@ -13,7 +13,8 @@ interface Lead {
   score: number
   status: string
   createdAt: string
-  meta: any
+  meta: Record<string, any>
+  enrichmentMeta?: Record<string, any>
 }
 
 interface EcobeHandoff {
@@ -27,17 +28,25 @@ interface EcobeHandoff {
   attempts: number
 }
 
+const OUTCOME_ACTIONS = [
+  { label: 'Mark Contacted', status: 'CONTACTED', icon: Clock3 },
+  { label: 'Move To Review', status: 'REVIEW', icon: Activity },
+  { label: 'Mark Won', status: 'WON', icon: CheckCircle2 },
+  { label: 'Mark Lost', status: 'LOST', icon: XCircle },
+] as const
+
 export default function LeadDetailPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [lead, setLead] = useState<Lead | null>(null)
   const [handoff, setHandoff] = useState<EcobeHandoff | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [savingStatus, setSavingStatus] = useState<string | null>(null)
 
   useEffect(() => {
     const pathParts = window.location.pathname.split('/')
     const leadId = pathParts[pathParts.length - 1]
-    
+
     if (!leadId || leadId === 'page') {
       router.push('/leads')
       return
@@ -45,7 +54,7 @@ export default function LeadDetailPage() {
 
     Promise.all([
       fetch(`/api/leads/${leadId}`, { credentials: 'include' }),
-      fetch(`/api/leads/${leadId}/ecobe-handoff`, { credentials: 'include' })
+      fetch(`/api/leads/${leadId}/ecobe-handoff`, { credentials: 'include' }),
     ])
       .then(async ([leadRes, handoffRes]) => {
         const leadData = await leadRes.json()
@@ -58,9 +67,34 @@ export default function LeadDetailPage() {
         setLead(leadData.lead)
         setHandoff(handoffData.handoff || null)
       })
-      .catch((err: any) => setError(err.message || 'Failed to load lead'))
+      .catch((err: { message?: string }) => setError(err.message || 'Failed to load lead'))
       .finally(() => setLoading(false))
   }, [router])
+
+  async function updateOutcome(status: string) {
+    if (!lead) return
+    setSavingStatus(status)
+    setError(null)
+
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/outcome`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to update lead')
+      }
+
+      setLead((current) => (current ? { ...current, status } : current))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update lead')
+    } finally {
+      setSavingStatus(null)
+    }
+  }
 
   if (loading) {
     return (
@@ -87,29 +121,16 @@ export default function LeadDetailPage() {
     )
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'WON': return 'text-green-400'
-      case 'NEW': return 'text-blue-400'
-      case 'CONTACTED': return 'text-yellow-400'
-      case 'LOST': return 'text-red-400'
-      default: return 'text-slate-400'
-    }
-  }
-
-  const getStatusBg = (status: string) => {
-    switch (status) {
-      case 'WON': return 'bg-green-500/10 border-green-500/20'
-      case 'NEW': return 'bg-blue-500/10 border-blue-500/20'
-      case 'CONTACTED': return 'bg-yellow-500/10 border-yellow-500/20'
-      case 'LOST': return 'bg-red-500/10 border-red-500/20'
-      default: return 'bg-slate-500/10 border-slate-500/20'
-    }
-  }
+  const meta = lead.meta || {}
+  const qualityGate = meta.qualityGate || {}
+  const discoveryGate = meta.discoveryGate || {}
+  const outreach = meta.outreach || {}
+  const proofPack = meta.proofPack || {}
+  const evidence = Array.isArray(proofPack.evidence) ? proofPack.evidence : []
+  const enrichmentMeta = lead.enrichmentMeta || {}
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-      {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950/50 backdrop-blur-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -124,12 +145,12 @@ export default function LeadDetailPage() {
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
                   <Activity className="w-5 h-5 text-white" />
                 </div>
-                <span className="text-xl font-bold text-white">Lead Details</span>
+                <span className="text-xl font-bold text-white">Lead Proof Pack</span>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={() => window.open(`/ecobe/handoffs`, '_blank')}
+                onClick={() => window.open('/ecobe/handoffs', '_blank')}
                 className="flex items-center gap-2 px-4 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-lg text-cyan-400 transition"
               >
                 <Activity className="w-4 h-4" />
@@ -140,25 +161,27 @@ export default function LeadDetailPage() {
         </div>
       </header>
 
-      {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Main Content */}
           <div className="lg:col-span-2 space-y-8">
-            {/* Lead Info */}
             <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-8">
-              <div className="flex items-start justify-between mb-6">
+              <div className="flex items-start justify-between gap-6 mb-6">
                 <div>
                   <h1 className="text-2xl font-bold text-white mb-2">
                     {lead.title || 'Untitled Lead'}
                   </h1>
-                  <div className="flex items-center gap-3">
-                    <span className={`px-3 py-1 text-sm rounded-full border ${getStatusBg(lead.status)} ${getStatusColor(lead.status)}`}>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="px-3 py-1 text-sm rounded-full border border-cyan-500/20 bg-cyan-500/10 text-cyan-300">
                       {lead.status}
                     </span>
                     <span className="text-slate-400 text-sm">
                       Score: <span className="font-medium text-white">{lead.score}</span>
                     </span>
+                    {qualityGate.tier && (
+                      <span className="px-3 py-1 text-sm rounded-full border border-blue-500/20 bg-blue-500/10 text-blue-300">
+                        {qualityGate.tier}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="text-right">
@@ -169,15 +192,27 @@ export default function LeadDetailPage() {
                 </div>
               </div>
 
-              {/* Snippet */}
+              {meta.triggerEvent && (
+                <div className="mb-4 p-4 rounded-xl bg-slate-950/50 border border-slate-800">
+                  <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Trigger event</div>
+                  <div className="text-white">{meta.triggerEvent}</div>
+                </div>
+              )}
+
+              {meta.whyNow && (
+                <div className="mb-6 p-4 rounded-xl bg-slate-950/50 border border-slate-800">
+                  <div className="text-xs uppercase tracking-wide text-slate-400 mb-1">Why now</div>
+                  <div className="text-slate-200">{meta.whyNow}</div>
+                </div>
+              )}
+
               {lead.snippet && (
                 <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-white mb-3">Summary</h3>
+                  <h3 className="text-lg font-semibold text-white mb-3">Source summary</h3>
                   <p className="text-slate-300 leading-relaxed">{lead.snippet}</p>
                 </div>
               )}
 
-              {/* Source */}
               {lead.sourceUrl && (
                 <div>
                   <h3 className="text-lg font-semibold text-white mb-3">Source</h3>
@@ -192,76 +227,141 @@ export default function LeadDetailPage() {
                   </a>
                 </div>
               )}
+            </div>
 
-              {/* Enrichment Data */}
-              {lead.meta && Object.keys(lead.meta).length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-semibold text-white mb-3">Enrichment Data</h3>
-                  <div className="bg-slate-800/50 rounded-lg p-4">
-                    <pre className="text-slate-300 text-sm overflow-x-auto">
-                      {JSON.stringify(lead.meta, null, 2)}
-                    </pre>
-                  </div>
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+                <h2 className="text-lg font-semibold text-white mb-4">Discovery Gate</h2>
+                <div className="text-3xl font-bold text-white mb-2">
+                  {discoveryGate.score ?? '—'}
+                </div>
+                <div className="text-slate-400 text-sm mb-3">
+                  {discoveryGate.passed ? 'Passed' : 'Needs more proof'}
+                </div>
+                <div className="text-slate-300 text-sm">
+                  {discoveryGate.reason || 'No discovery summary available.'}
+                </div>
+              </div>
+
+              <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
+                <h2 className="text-lg font-semibold text-white mb-4">Quality Gate</h2>
+                <div className="text-3xl font-bold text-white mb-2">
+                  {qualityGate.score ?? '—'}
+                </div>
+                <div className="text-slate-400 text-sm mb-3">
+                  {qualityGate.confidenceLabel || 'unknown'} confidence
+                </div>
+                <div className="text-slate-300 text-sm">
+                  {qualityGate.reason || 'No quality summary available.'}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-8">
+              <h2 className="text-xl font-bold text-white mb-6">Validation Proof</h2>
+              {evidence.length === 0 ? (
+                <div className="text-slate-400">No evidence captured yet.</div>
+              ) : (
+                <div className="space-y-3">
+                  {evidence.map((item: Record<string, any>, index: number) => (
+                    <div
+                      key={`${item.label || 'evidence'}-${index}`}
+                      className="p-4 rounded-xl bg-slate-950/50 border border-slate-800"
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <div className="text-white font-medium">
+                            {String(item.label || 'proof').replace(/-/g, ' ')}
+                          </div>
+                          <div className="text-slate-400 text-sm mt-1">{item.detail || '—'}</div>
+                        </div>
+                        <div className="text-cyan-300 text-sm">+{item.weight || 0}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
 
-            {/* Actions */}
             <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-8">
-              <h2 className="text-xl font-bold text-white mb-6">Actions</h2>
-              <div className="grid md:grid-cols-2 gap-4">
-                <button
-                  onClick={() => {
-                    // Update lead status logic here
-                    console.log('Mark as contacted')
-                  }}
-                  className="p-4 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-lg text-left transition"
-                >
-                  <div className="font-semibold text-white mb-1">Mark as Contacted</div>
-                  <div className="text-sm text-slate-400">Update lead status</div>
-                </button>
+              <h2 className="text-xl font-bold text-white mb-6">Recommended Motion</h2>
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <div className="text-sm text-slate-400 mb-2">Recommended action</div>
+                  <div className="text-white">{outreach.recommendedAction || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-slate-400 mb-2">Timing window</div>
+                  <div className="text-white">{outreach.recommendedWindow || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-slate-400 mb-2">Buyer persona</div>
+                  <div className="text-white">{outreach.buyerPersona || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-slate-400 mb-2">Outreach angle</div>
+                  <div className="text-white">{outreach.angle || '—'}</div>
+                </div>
+              </div>
+            </div>
 
-                <button
-                  onClick={() => {
-                    // Archive lead logic here
-                    console.log('Archive lead')
-                  }}
-                  className="p-4 bg-slate-500/10 hover:bg-slate-500/20 border border-slate-500/20 rounded-lg text-left transition"
-                >
-                  <div className="font-semibold text-white mb-1">Archive Lead</div>
-                  <div className="text-sm text-slate-400">Hide from active list</div>
-                </button>
+            <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-8">
+              <h2 className="text-xl font-bold text-white mb-6">Update Outcome</h2>
+              <div className="grid md:grid-cols-2 gap-4">
+                {OUTCOME_ACTIONS.map((action) => (
+                  <button
+                    key={action.status}
+                    onClick={() => updateOutcome(action.status)}
+                    disabled={savingStatus !== null}
+                    className="p-4 bg-slate-950/50 hover:bg-slate-900 border border-slate-800 rounded-lg text-left transition disabled:opacity-60"
+                  >
+                    <div className="flex items-center gap-3">
+                      <action.icon className="w-5 h-5 text-cyan-300" />
+                      <div>
+                        <div className="font-semibold text-white">{action.label}</div>
+                        <div className="text-sm text-slate-400">
+                          {savingStatus === action.status ? 'Saving...' : 'Record a real pipeline outcome'}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* Sidebar */}
           <div className="space-y-8">
-            {/* ECOBE Handoff Section */}
             <LeadHandoffSection
               lead={lead}
               existingHandoff={handoff}
               onHandoffCreated={(newHandoff) => setHandoff(newHandoff)}
             />
 
-            {/* Quick Stats */}
             <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6">
               <h3 className="text-lg font-semibold text-white mb-4">Quick Stats</h3>
               <div className="space-y-4">
                 <div>
-                  <div className="text-sm text-slate-400">Lead Score</div>
+                  <div className="text-sm text-slate-400">Lead score</div>
                   <div className="text-2xl font-bold text-white">{lead.score}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-slate-400">Status</div>
-                  <div className={`px-2 py-1 text-sm rounded-full border ${getStatusBg(lead.status)} ${getStatusColor(lead.status)}`}>
-                    {lead.status}
-                  </div>
+                  <div className="text-sm text-slate-400">Company size</div>
+                  <div className="text-white">{enrichmentMeta.companySize || '—'}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-slate-400">Age</div>
+                  <div className="text-sm text-slate-400">Funding stage</div>
+                  <div className="text-white">{enrichmentMeta.funding || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-slate-400">LinkedIn</div>
+                  <div className="text-white break-all">{enrichmentMeta.linkedin || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-slate-400">Tech stack</div>
                   <div className="text-white">
-                    {Math.floor((Date.now() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60 * 24))} days
+                    {Array.isArray(enrichmentMeta.techStack) && enrichmentMeta.techStack.length > 0
+                      ? enrichmentMeta.techStack.join(', ')
+                      : '—'}
                   </div>
                 </div>
               </div>

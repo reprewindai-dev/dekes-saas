@@ -57,7 +57,7 @@ function EcobeDashboardMetricsInner() {
         setError(null)
         const result = await cacheStrategies.analytics('/api/dashboard/ecobe-stats', { 
           credentials: 'include' 
-        })
+        }) as EcobeDashboardData | null
         
         if (result && result.stats) {
           setData(result)

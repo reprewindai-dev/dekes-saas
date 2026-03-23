@@ -321,14 +321,15 @@ export async function POST(request: Request) {
           emissions: {
             actualCarbonIntensity: carbonIntensity ?? fallbackCarbonIntensity,
             actualEmissionsKgCo2e: actualCO2 / 1000, // Convert g to kg
-            measurementSource: 'estimated', // DKS provides estimates
+            source: 'estimated', // DKS provides estimates
           },
           status: {
             completed: true,
             slaMet: durationMinutes <= (data.delayToleranceMinutes || 60),
-            fallbackTriggered: !routing || routing.action === 'fallback',
+            fallbackTriggered: !routing,
           },
           metadata: {
+            organizationId,
             queryId: ensuredQuery.id,
             runId: run.id,
             actualQueries: leadGeneration.requested,

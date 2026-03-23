@@ -24,7 +24,11 @@ export const WorkloadTypeEnum = z.enum([
   'signal_harvesting',
   'evidence_validation', 
   'lead_scoring',
-  'query_processing'
+  'query_processing',
+  'lead_generation_batch',
+  'enrichment_job',
+  'intent_classification_batch',
+  'web_discovery_task',
 ])
 
 export const CarbonCommandPayloadSchema = z.object({
@@ -108,6 +112,18 @@ export const CarbonOutcomeSchema = z.object({
     actualCarbonIntensity: z.number().nonnegative().optional(),
     source: MeasurementSourceEnum.optional(),
     estimatedKgCO2e: z.number().nonnegative().optional(),
+    actualEmissionsKgCo2e: z.number().nonnegative().optional(),
+  }).optional(),
+
+  status: z.object({
+    completed: z.boolean(),
+    slaMet: z.boolean().optional(),
+    fallbackTriggered: z.boolean().optional(),
+  }).optional(),
+
+  cost: z.object({
+    actualUsd: z.number().nonnegative().optional(),
+    estimatedUsd: z.number().nonnegative().optional(),
   }).optional(),
   
   // Additional metadata
@@ -131,8 +147,24 @@ export const DksWorkloadPayloadSchema = CarbonCommandPayloadSchema.extend({
     'signal_harvesting', 
     'evidence_validation', 
     'lead_scoring', 
-    'query_processing'
+    'query_processing',
+    'lead_generation_batch',
+    'enrichment_job',
+    'intent_classification_batch',
+    'web_discovery_task',
   ]),
+
+  estimatedGpuHours: z.number().nonnegative().optional(),
+  estimatedCpuHours: z.number().nonnegative().optional(),
+  estimatedMemoryGb: z.number().positive().optional(),
+  candidateRegions: z.array(z.string()).max(20).optional(),
+  excludedRegions: z.array(z.string()).max(20).optional(),
+  maxLatencyMs: z.number().positive().optional(),
+  deadlineAt: z.string().datetime().optional(),
+  priority: CarbonPriorityEnum.optional(),
+  carbonPriority: CarbonPriorityEnum.optional(),
+  allowTimeShifting: z.boolean().optional(),
+  allowCrossRegionExecution: z.boolean().optional(),
   
   // DKS-specific timing
   durationMinutes: z.number().positive().optional(),

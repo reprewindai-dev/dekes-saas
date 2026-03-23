@@ -102,6 +102,14 @@ export interface LeadListItem {
   utmCampaign: string | null
   utmTerm: string | null
   utmContent: string | null
+  triggerEvent?: string | null
+  whyNow?: string | null
+  qualityTier?: string | null
+  discoveryScore?: number | null
+  evidenceCount?: number | null
+  recommendedAction?: string | null
+  recommendedWindow?: string | null
+  confidenceLabel?: string | null
 }
 
 export interface ErrorResponse {

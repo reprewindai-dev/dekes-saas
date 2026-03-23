@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Target, TrendingUp, Users, Zap, ArrowRight } from 'lucide-react'
 import EcobeDashboardMetrics from '@/components/ecobe/dashboard-metrics'
 import EcobeInboundEventsPanel from '@/components/ecobe/inbound-events-panel'
+import LeadIntelligencePanel from '@/components/lead-intelligence-panel'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -123,6 +124,8 @@ export default function DashboardPage() {
             <div className="text-sm text-slate-400">Conversion Rate</div>
           </div>
         </div>
+
+        <LeadIntelligencePanel />
 
         {/* ECOBE Pipeline Metrics */}
         <EcobeDashboardMetrics />

@@ -90,11 +90,22 @@ export async function runLeadEnrichmentJob(): Promise<JobResult> {
         const funding = deriveFundingStage(lead.score)
         const techStack = detectTechStack(lead.snippet)
         const linkedin = deriveLinkedInHandle(lead.canonicalUrl)
+        const leadMeta = (lead.meta as Record<string, unknown>) || {}
+        const qualityGate = (leadMeta.qualityGate as Record<string, unknown> | undefined) || {}
+        const proofPack = (leadMeta.proofPack as Record<string, unknown> | undefined) || {}
         
         // Enhanced scoring with AI insights
         const aiBoost = aiClassification.serviceFit * 10
         const techBoost = techStack.length * 2
         const updatedScore = Math.min(98, Math.round(lead.score + aiBoost + techBoost))
+        const promotedStatus =
+          updatedScore >= 78 &&
+          aiClassification.confidence >= 0.7 &&
+          qualityGate.tier !== 'reject'
+            ? 'OUTREACH_READY'
+            : lead.status === 'OUTREACH_READY'
+              ? 'OUTREACH_READY'
+              : 'REVIEW'
 
         return prisma.lead.update({
           where: { id: lead.id },
@@ -102,12 +113,46 @@ export async function runLeadEnrichmentJob(): Promise<JobResult> {
             enrichmentStatus: 'ENRICHED',
             enrichedAt: new Date(),
             score: updatedScore,
+            status: promotedStatus,
             buyerType: aiClassification.buyerType,
             intentClass: aiClassification.intentClass,
             intentConfidence: aiClassification.confidence,
             rush12HourEligible: aiClassification.urgencySignals.immediate,
             painTags: aiClassification.painPoints,
             serviceTags: aiClassification.urgencySignals.budgetIndicators,
+            meta: {
+              ...leadMeta,
+              sizeLabel: companySize,
+              funding,
+              linkedin,
+              techStack,
+              qualityGate: {
+                ...qualityGate,
+                score: Math.max(Number(qualityGate.score || 0), updatedScore),
+                passed: promotedStatus === 'OUTREACH_READY' || qualityGate.passed === true,
+                tier:
+                  promotedStatus === 'OUTREACH_READY'
+                    ? updatedScore >= 88
+                      ? 'elite'
+                      : 'strong'
+                    : qualityGate.tier || 'review',
+              },
+              outreach: {
+                ...((leadMeta.outreach as Record<string, unknown> | undefined) || {}),
+                recommendedAction:
+                  promotedStatus === 'OUTREACH_READY'
+                    ? 'Route to the owning rep and launch the recommended sequence.'
+                    : 'Hold for analyst review before rep handoff.',
+              },
+              proofPack: {
+                ...proofPack,
+                enriched: true,
+                validationSummary:
+                  typeof proofPack.validationSummary === 'string'
+                    ? `${proofPack.validationSummary} Enrichment confirmed firmographic context.`
+                    : 'Enrichment confirmed firmographic context.',
+              },
+            },
             enrichmentMeta: {
               ...(lead.enrichmentMeta as Record<string, unknown>),
               companySize,

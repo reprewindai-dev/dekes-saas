@@ -1,0 +1,127 @@
+name: DEKES SaaS CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, "codex/**"]
+  workflow_dispatch:
+
+jobs:
+  build-and-verify:
+    name: Build And Verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dekes-saas
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: dekes-saas/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Build production app
+        run: npm run build
+
+      - name: Verify lead intelligence pipeline
+        run: npm run verify:lead-intelligence
+
+      - name: Validate critical routes exist
+        run: |
+          test -f app/page.tsx
+          test -f app/demo/page.tsx
+          test -f app/dashboard/page.tsx
+          test -f app/leads/page.tsx
+          test -f app/leads/[id]/page.tsx
+          test -f app/api/health/route.ts
+          test -f app/api/leads/run/route.ts
+          test -f app/api/leads/analytics/route.ts
+
+  smoke-public-routes:
+    name: Smoke Public Routes
+    runs-on: ubuntu-latest
+    needs: build-and-verify
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: dekes-saas
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+      JWT_SECRET: test_jwt_secret_for_ci
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3001
+      CO2ROUTER_API_URL: https://ecobe-engineclaude-production.up.railway.app
+      CO2ROUTER_INTEGRATION_ENABLED: "false"
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: dekes-saas/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare database
+        run: |
+          npx prisma generate
+          npx prisma db push --accept-data-loss
+
+      - name: Build app
+        run: npm run build
+
+      - name: Start production server
+        run: |
+          npm start &
+          echo $! > dekes.pid
+
+      - name: Wait for app
+        run: |
+          timeout 60 bash -c 'until curl -fsS http://127.0.0.1:3001/api/health; do sleep 2; done'
+
+      - name: Smoke test public routes
+        run: |
+          curl -fsS http://127.0.0.1:3001/api/health
+          curl -fsS http://127.0.0.1:3001/ > /tmp/home.html
+          curl -fsS http://127.0.0.1:3001/demo > /tmp/demo.html
+          curl -fsS http://127.0.0.1:3001/auth/login > /tmp/login.html
+          curl -fsS http://127.0.0.1:3001/auth/signup > /tmp/signup.html
+          grep -q "DEKES" /tmp/home.html
+          grep -q "Watch DEKES move" /tmp/demo.html
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f dekes.pid ]; then
+            kill $(cat dekes.pid) || true
+          fi

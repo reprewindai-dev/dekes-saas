@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: dekes-saas
+    env: docker
+    plan: starter
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://dekes-saas.onrender.com
+      - key: SERPAPI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_STARTER
+        sync: false
+      - key: STRIPE_PRICE_PROFESSIONAL
+        sync: false
+      - key: STRIPE_PRICE_ENTERPRISE
+        sync: false
+      - key: CO2ROUTER_API_URL
+        value: https://ecobe-engineclaude.onrender.com
+      - key: CO2ROUTER_API_KEY
+        sync: false
+      - key: CO2ROUTER_INTEGRATION_ENABLED
+        value: "true"
+      - key: ECOBE_ENGINE_URL
+        value: https://ecobe-engineclaude.onrender.com
+      - key: ECOBE_ENGINE_API_KEY
+        sync: false
+      - key: ECOBE_API_BASE_URL
+        value: https://ecobe-engineclaude.onrender.com
+      - key: ECOBE_API_KEY
+        sync: false
+      - key: DEKES_API_KEY
+        sync: false
+      - key: ECOBE_OPTIMIZE_URL
+        value: https://ecobe-engineclaude.onrender.com/api/v1/dekes/optimize
+      - key: ECOBE_REPORT_URL
+        value: https://ecobe-engineclaude.onrender.com/api/v1/dekes/report
+      - key: ECOBE_ANALYTICS_URL
+        value: https://ecobe-engineclaude.onrender.com/api/v1/dekes/analytics
+      - key: ECOBE_ROUTE_BASE_URL
+        value: https://ecobe-engineclaude.onrender.com
+      - key: NEXT_PUBLIC_ECOBE_DASHBOARD_URL
+        value: https://ecobe-engineclaude.onrender.com

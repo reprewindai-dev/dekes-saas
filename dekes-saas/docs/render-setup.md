@@ -1,11 +1,23 @@
-# DEKES on Render
+# Render Setup
 
-## Deployment target
+## What this covers
 
-- Render web service with Docker
-- Health check: `/api/health`
-- Search provider: `SERPAPI_API_KEY`
-- CO2Router / ECOBE integration: optional, env-driven
+- Render deployment for DEKES SaaS
+- Render-hosted Web Service
+- Render-friendly environment variables
+- ECOBE and search integration defaults
+
+## Render service
+
+Use the repository `render.yaml` as the deployment blueprint.
+
+### Service settings
+
+- Type: Web Service
+- Runtime: Docker
+- Health check path: `/api/health`
+- Build source: `Dockerfile`
+- Auto deploy: on
 
 ## Required environment variables
 
@@ -47,13 +59,16 @@
 - `UPSTASH_VECTOR_REST_TOKEN`
 - `OPENAI_API_KEY`
 
-## Render config
+## Integration defaults
 
-Use `render.yaml` in the repo root. It points the service at the Dockerfile and health endpoint.
+- Search provider: `serpapi`
+- Search fallback: optional `apify`
+- ECOBE URLs: Render-hosted `ecobe-engineclaude.onrender.com`
+- Public app URL: `dekes-saas.onrender.com`
 
-## Runtime rules
+## Verification
 
-- The app fails closed if `SERPAPI_API_KEY` is missing.
-- ECOBE and control-plane hooks remain adapter-driven.
-- `/api/health` should return `200` after deploy.
-- Production URLs should use the Render service domain.
+- Open `/api/health`
+- Confirm the app reports healthy database connectivity
+- Confirm the settings UI shows the Render ECOBE URL by default
+- Run the production verification script against the Render URLs

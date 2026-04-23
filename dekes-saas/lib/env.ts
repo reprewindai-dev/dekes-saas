@@ -14,6 +14,7 @@ const checks: EnvCheck[] = [
   { key: 'DATABASE_URL', required: true, label: 'PostgreSQL connection string' },
   { key: 'JWT_SECRET', required: process.env.NODE_ENV === 'production', label: 'JWT signing secret' },
   { key: 'NEXT_PUBLIC_APP_URL', required: false, label: 'Public app URL (for QStash callbacks)' },
+  { key: 'RENDER_EXTERNAL_URL', required: false, label: 'Render public URL fallback' },
   { key: 'QSTASH_TOKEN', required: false, label: 'Upstash QStash token' },
   { key: 'UPSTASH_REDIS_REST_URL', required: false, label: 'Upstash Redis URL' },
   { key: 'STRIPE_SECRET_KEY', required: false, label: 'Stripe secret key' },
@@ -66,4 +67,8 @@ export function logEnvStatus() {
   }
 
   return valid
+}
+
+export function resolveAppUrl() {
+  return process.env.NEXT_PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000'
 }

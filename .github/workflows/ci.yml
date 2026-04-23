@@ -61,7 +61,7 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
       JWT_SECRET: test_jwt_secret_for_ci
       NEXT_PUBLIC_APP_URL: http://127.0.0.1:3001
-      CO2ROUTER_API_URL: https://ecobe-engineclaude-production.up.railway.app
+      CO2ROUTER_API_URL: https://ecobe-engineclaude.onrender.com
       CO2ROUTER_INTEGRATION_ENABLED: "false"
 
     services:

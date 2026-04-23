@@ -20,7 +20,7 @@ export default function EcobeSettingsPage() {
   const [settings, setSettings] = useState<EcobeSettings>({
     enabled: false,
     apiKey: '',
-    baseUrl: 'https://api.ecobe.dev',
+    baseUrl: 'https://ecobe-engineclaude-production.up.railway.app',
     webhookSecret: '',
     autoHandoff: true,
     minQualificationScore: 70,
@@ -191,7 +191,7 @@ export default function EcobeSettingsPage() {
                   value={settings.baseUrl}
                   onChange={(e) => setSettings(prev => ({ ...prev, baseUrl: e.target.value }))}
                   className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-cyan-500"
-                  placeholder="https://api.ecobe.dev"
+                  placeholder="https://ecobe-engineclaude-production.up.railway.app"
                 />
               </div>
 

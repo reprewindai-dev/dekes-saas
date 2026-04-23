@@ -6,6 +6,8 @@ import { qualifyLeadForEcobe } from '@/lib/ecobe/qualification'
 import { createEcobeProspect, createEcobeTenant, triggerEcobeDemo } from '@/lib/ecobe/client'
 import { publishEvent } from '@/lib/events/publisher'
 import { recordMetric } from '@/lib/metrics/recorder'
+import { cookies } from 'next/headers'
+import type { HandoffPayload, ErrorResponse, LeadMeta } from '@/types'
 
 const handoffSchema = z.object({
   leadId: z.string().cuid(),
@@ -13,8 +15,14 @@ const handoffSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const token = req.headers.get('authorization')?.replace('Bearer ', '')
-    const session = await validateSession(token || '')
+    const token = 
+      req.headers.get('authorization')?.replace('Bearer ', '') ||
+      cookies().get('DEKES_SESSION')?.value
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const session = await validateSession(token)
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -38,11 +46,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
     }
 
+    // Validate required relations exist before proceeding
+    if (!lead.query) {
+      return NextResponse.json({ error: 'Lead query information not found' }, { status: 400 })
+    }
+    
+    if (!lead.run) {
+      return NextResponse.json({ error: 'Lead run information not found' }, { status: 400 })
+    }
+    
+    if (!lead.organization) {
+      return NextResponse.json({ error: 'Lead organization information not found' }, { status: 400 })
+    }
+
     const qualification = qualifyLeadForEcobe({
       lead,
-      query: lead.query!,
-      run: lead.run!,
-      organization: lead.organization!,
+      query: lead.query,
+      run: lead.run,
+      organization: lead.organization,
     })
 
     if (!qualification.isQualified) {
@@ -67,12 +88,18 @@ export async function POST(req: NextRequest) {
       }, { status: 409 })
     }
 
-    const handoffPayload = {
+    const leadMeta = ((lead.meta || {}) as LeadMeta) ?? {}
+    const enrichmentMeta = ((lead.enrichmentMeta || {}) as LeadMeta) ?? {}
+
+    const handoffPayload: HandoffPayload = {
       organization: {
-        name: lead.organization!.name,
-        domain: (lead.meta as any)?.domain || null,
-        sizeLabel: (lead.meta as any)?.sizeLabel || null,
-        region: (lead.meta as any)?.region || null,
+        name: lead.organization.name,
+        domain: leadMeta.domain || null,
+        sizeLabel:
+          (typeof enrichmentMeta.companySize === 'string' ? enrichmentMeta.companySize : null) ||
+          leadMeta.sizeLabel ||
+          null,
+        region: leadMeta.region || null,
       },
       intent: {
         score: qualification.score,
@@ -80,9 +107,12 @@ export async function POST(req: NextRequest) {
         keywords: qualification.signals,
       },
       contact: {
-        name: (lead.meta as any)?.contactName || null,
-        email: (lead.meta as any)?.contactEmail || null,
-        linkedin: (lead.meta as any)?.linkedin || null,
+        name: leadMeta.contactName || null,
+        email: leadMeta.contactEmail || null,
+        linkedin:
+          (typeof enrichmentMeta.linkedin === 'string' ? enrichmentMeta.linkedin : null) ||
+          leadMeta.linkedin ||
+          null,
       },
       source: {
         leadId: lead.id,
@@ -99,7 +129,7 @@ export async function POST(req: NextRequest) {
         runId: lead.runId,
         handoffType: 'PROSPECT',
         status: 'PENDING',
-        payloadJson: handoffPayload,
+        payloadJson: JSON.parse(JSON.stringify(handoffPayload)),
         qualificationReason: qualification.reason,
         qualificationScore: qualification.score,
         attempts: 0,
@@ -117,7 +147,7 @@ export async function POST(req: NextRequest) {
           handoffId: handoff.id,
           leadId,
           jobId,
-        } as any,
+        },
       })
 
       await recordMetric('ecobe.handoff.queued', {

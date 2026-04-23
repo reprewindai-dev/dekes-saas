@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { validateSession } from '@/lib/auth/jwt'
+import { getSessionToken } from '@/lib/auth/get-session-token'
 import { z } from 'zod'
 
 const settingsSchema = z.object({
@@ -15,7 +16,7 @@ const settingsSchema = z.object({
 // GET current settings
 export async function GET(req: NextRequest) {
   try {
-    const token = req.headers.get('authorization')?.replace('Bearer ', '')
+    const token = getSessionToken(req)
     const session = await validateSession(token || '')
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
     const settings = (organization.settings as any)?.ecobe || {
       enabled: false,
       apiKey: '',
-      baseUrl: 'https://api.ecobe.dev',
+      baseUrl: 'https://ecobe-engineclaude-production.up.railway.app',
       webhookSecret: '',
       autoHandoff: true,
       minQualificationScore: 70,
@@ -55,7 +56,7 @@ export async function GET(req: NextRequest) {
 // POST update settings
 export async function POST(req: NextRequest) {
   try {
-    const token = req.headers.get('authorization')?.replace('Bearer ', '')
+    const token = getSessionToken(req)
     const session = await validateSession(token || '')
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

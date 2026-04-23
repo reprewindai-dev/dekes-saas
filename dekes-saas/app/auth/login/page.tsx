@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -33,7 +34,10 @@ export default function LoginPage() {
       if (!res.ok) {
         throw new Error(result.error || 'Failed to log in')
       }
-      router.push('/dashboard')
+
+      const from = searchParams.get('from')
+      const destination = from && from.startsWith('/') ? from : '/dashboard'
+      router.push(destination)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -49,15 +53,16 @@ export default function LoginPage() {
           <p className="text-slate-400 mb-8">Log in to your DEKES account</p>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+            <div role="alert" className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
+              <label htmlFor="login-email" className="block text-sm font-medium text-slate-300 mb-2">Email</label>
               <input
+                id="login-email"
                 type="email"
                 name="email"
                 required
@@ -67,8 +72,9 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Password</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-slate-300 mb-2">Password</label>
               <input
+                id="login-password"
                 type="password"
                 name="password"
                 required
@@ -95,5 +101,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
+        <div className="text-slate-400 text-sm">Loading...</div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   )
 }

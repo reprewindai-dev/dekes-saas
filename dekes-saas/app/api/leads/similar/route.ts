@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateSession } from '@/lib/auth/jwt'
+import { getSessionToken } from '@/lib/auth/get-session-token'
 import { leadDeduplication } from '@/lib/leads/deduplication'
 
 export async function POST(req: NextRequest) {
   try {
-    const token = req.headers.get('authorization')?.replace('Bearer ', '')
+    const token = getSessionToken(req)
     const session = await validateSession(token || '')
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

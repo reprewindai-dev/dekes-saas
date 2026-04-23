@@ -2,8 +2,9 @@ import { createHash } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { fetchSearchResults } from '@/lib/search/fallback'
-import { classifyLeadIntent, type IntentClassification } from '@/lib/ai/groq'
+import { classifyLeadIntent } from '@/lib/ai/groq'
 import { getCalibratedWeights } from '@/lib/leads/feedback-loop'
+import { assessLeadPipeline } from '@/lib/leads/intelligence'
 import type { UTMData } from '@/lib/utm'
 
 export type LeadGenerationOptions = {
@@ -21,12 +22,89 @@ export type LeadGenerationResult = {
   requested: number
   attempted: number
   inserted: number
+  rejected: number
   leads: Prisma.LeadUncheckedCreateInput[]
 }
 
-const SOURCE = 'SERPAPI_GOOGLE'
 const MIN_SCORE = 45
 const MAX_SCORE = 98
+
+const REJECTED_TITLE_PATTERNS =
+  /\b(top\s+\d+|best\s+\d+|top\s+\w+\s+\d+|best\s+\w+\s+\d+|list\s+of|directory|companies\s+to|agencies\s+to|platforms\s+to|roundup|round-up|alternatives\s+to|vs\s+|versus|comparison|compared|review\s+of|reviews\s+of|\d+\s+best|\d+\s+top)\b/i
+
+const REJECTED_DOMAINS = new Set([
+  'youtube.com',
+  'linkedin.com',
+  'reddit.com',
+  'facebook.com',
+  'instagram.com',
+  'twitter.com',
+  'x.com',
+  'medium.com',
+  'clutch.co',
+  'g2.com',
+  'capterra.com',
+  'trustpilot.com',
+  'yelp.com',
+  'glassdoor.com',
+  'crunchbase.com',
+  'wikipedia.org',
+  'pinterest.com',
+  'tiktok.com',
+  'quora.com',
+  'indeed.com',
+  'bbb.org',
+  'forbes.com',
+  'inc.com',
+  'entrepreneur.com',
+  'hubspot.com',
+  'nerdwallet.com',
+  'themanifest.com',
+  'goodfirms.co',
+  'designrush.com',
+  'sortlist.com',
+  'upcity.com',
+  'expertise.com',
+])
+
+const REJECTED_PATH_PATTERNS =
+  /\/(blog|news|article|press|wiki|category|tag|archive|search|forum|thread|discussion|listicle)\b/i
+
+function extractDomain(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '').toLowerCase()
+  } catch {
+    return null
+  }
+}
+
+type RejectReason = 'title_pattern' | 'platform_domain' | 'aggregator_path' | null
+
+function shouldRejectResult(title: string | null | undefined, url: string): RejectReason {
+  if (title && REJECTED_TITLE_PATTERNS.test(title)) {
+    return 'title_pattern'
+  }
+
+  const domain = extractDomain(url)
+  if (domain) {
+    for (const blocked of REJECTED_DOMAINS) {
+      if (domain === blocked || domain.endsWith(`.${blocked}`)) {
+        return 'platform_domain'
+      }
+    }
+  }
+
+  try {
+    const path = new URL(url).pathname
+    if (REJECTED_PATH_PATTERNS.test(path)) {
+      return 'aggregator_path'
+    }
+  } catch {
+    // Ignore invalid URL parsing here and let downstream logic handle it.
+  }
+
+  return null
+}
 
 function normalizeGl(region?: string): string | undefined {
   if (!region) return undefined
@@ -36,7 +114,9 @@ function normalizeGl(region?: string): string | undefined {
 }
 
 function hashCanonical(url: string, organizationId: string): string {
-  return createHash('sha256').update(`${organizationId}::${url.toLowerCase()}`).digest('hex')
+  return createHash('sha256')
+    .update(`${organizationId}::${url.toLowerCase()}`)
+    .digest('hex')
 }
 
 function scoreFromPosition(position: number): number {
@@ -44,12 +124,8 @@ function scoreFromPosition(position: number): number {
   return Math.max(MIN_SCORE, Math.min(MAX_SCORE, score))
 }
 
-function secondaryScore(base: number, delta: number): number {
-  return Math.max(30, Math.min(95, base + delta))
-}
-
 export async function generateLeadsFromSearch(
-  options: LeadGenerationOptions
+  options: LeadGenerationOptions,
 ): Promise<LeadGenerationResult> {
   const gl = normalizeGl(options.selectedRegion || options.regions[0])
   const searchResults = await fetchSearchResults({
@@ -59,11 +135,10 @@ export async function generateLeadsFromSearch(
   })
 
   const created: Prisma.LeadUncheckedCreateInput[] = []
-
-  // Load feedback-calibrated scoring weights (defaults to 1.0 if no feedback yet)
   const weights = await getCalibratedWeights()
 
-  // Process leads sequentially to handle async AI classification properly
+  let rejectedCount = 0
+
   for (const [idx, result] of searchResults.entries()) {
     const link = result.link || result.displayed_link
     if (!link) continue
@@ -71,78 +146,52 @@ export async function generateLeadsFromSearch(
     const canonicalUrl = link.trim()
     if (!canonicalUrl) continue
 
+    const rejectReason = shouldRejectResult(result.title, canonicalUrl)
+    if (rejectReason) {
+      rejectedCount++
+      console.log(
+        `[DEKES] Rejected result: ${rejectReason} | ${result.title?.substring(0, 60)} | ${extractDomain(canonicalUrl)}`,
+      )
+      continue
+    }
+
     const canonicalHash = hashCanonical(canonicalUrl, options.organizationId)
     const baseScore = scoreFromPosition(idx)
 
-    // Get AI-powered intent classification
-    let intentClassification
-    try {
-      intentClassification = await classifyLeadIntent(
-        result.title || '',
-        result.snippet || '',
-        canonicalUrl
+    const intentClassification = await classifyLeadIntent(
+      result.title || '',
+      result.snippet || '',
+      canonicalUrl,
+    )
+
+    const pipelineAssessment = assessLeadPipeline({
+      query: options.query,
+      result: {
+        position: result.position ?? idx + 1,
+        title: result.title,
+        snippet: result.snippet,
+        link: canonicalUrl,
+        displayed_link: result.displayed_link,
+        provider: result.provider,
+        source: result.source,
+      },
+      intent: intentClassification,
+      baseScore,
+      weights,
+    })
+
+    if (pipelineAssessment.proofPack.recommendedStatus === 'REJECT') {
+      rejectedCount++
+      console.log(
+        `[DEKES] Rejected by gate | ${pipelineAssessment.qualityGate.reason} | ${result.title?.substring(0, 60)}`,
       )
-    } catch (error) {
-      console.warn('AI classification failed, using fallback:', error)
-      intentClassification = {
-        intentClass: baseScore > 70 ? 'HIGH_INTENT' : 'MEDIUM_INTENT',
-        confidence: Math.min(0.99, Math.max(0.4, baseScore / 100)),
-        buyerType: 'B2B_SaaS',
-        urgencySignals: {
-          immediate: baseScore > 80,
-          timeline: 'unknown',
-          budgetIndicators: [],
-        },
-        painPoints: [],
-        serviceFit: baseScore / 100,
-      }
+      continue
     }
 
-    // ── 5-Layer Scoring Engine ──────────────────────────────────────────
-    // Layer 1: Intent depth — AI classification confidence + intent class weight
-    const intentWeight = intentClassification.intentClass === 'HIGH_INTENT' ? 15
-      : intentClassification.intentClass === 'MEDIUM_INTENT' ? 5 : -5
-    const intentDepthScore = secondaryScore(
-      baseScore,
-      Math.round(intentWeight * intentClassification.confidence)
+    const finalScore = Math.max(
+      MIN_SCORE,
+      Math.min(MAX_SCORE, pipelineAssessment.scoring.finalScore),
     )
-
-    // Layer 2: Urgency velocity — immediacy + timeline signals
-    const urgencyBoost = intentClassification.urgencySignals.immediate ? 10 : 0
-    const timelineBoost = intentClassification.urgencySignals.timeline === 'this_quarter' ? 5
-      : intentClassification.urgencySignals.timeline === 'this_month' ? 8 : 0
-    const urgencyScore = secondaryScore(baseScore, urgencyBoost + timelineBoost - 5)
-
-    // Layer 3: Budget signals — number of budget indicators detected
-    const budgetIndicatorCount = intentClassification.urgencySignals.budgetIndicators?.length ?? 0
-    const budgetScore = secondaryScore(baseScore, budgetIndicatorCount * 4 - 8)
-
-    // Layer 4: Fit precision — AI service fit score (0-1)
-    const fitScore = secondaryScore(
-      baseScore,
-      Math.round((intentClassification.serviceFit - 0.5) * 20)
-    )
-
-    // Layer 5: Engagement depth — pain point specificity + search position
-    const painPointCount = intentClassification.painPoints?.length ?? 0
-    const engagementScore = secondaryScore(baseScore, painPointCount * 3 - 3)
-
-    // Composite score: feedback-calibrated weighted blend of all 5 layers
-    const rawComposite =
-      intentDepthScore * 0.30 * weights.intentWeight +
-      urgencyScore * 0.20 * weights.urgencyWeight +
-      budgetScore * 0.15 * weights.budgetWeight +
-      fitScore * 0.20 * weights.fitWeight +
-      engagementScore * 0.15 * weights.engagementWeight
-    // Normalize back to 100-point scale (weights are multipliers around 1.0)
-    const weightSum =
-      0.30 * weights.intentWeight +
-      0.20 * weights.urgencyWeight +
-      0.15 * weights.budgetWeight +
-      0.20 * weights.fitWeight +
-      0.15 * weights.engagementWeight
-    const compositeScore = Math.round(rawComposite / weightSum)
-    const finalScore = Math.max(MIN_SCORE, Math.min(MAX_SCORE, compositeScore))
 
     const leadPayload: Prisma.LeadUncheckedCreateInput = {
       organizationId: options.organizationId,
@@ -156,23 +205,36 @@ export async function generateLeadsFromSearch(
       snippet: result.snippet?.trim() || null,
       publishedAt: result.date ? new Date() : null,
       score: finalScore,
-      intentDepth: intentDepthScore,
-      urgencyVelocity: urgencyScore,
-      budgetSignals: budgetScore,
-      fitPrecision: fitScore,
+      intentDepth: pipelineAssessment.scoring.breakdown.intentDepth,
+      urgencyVelocity: pipelineAssessment.scoring.breakdown.urgencyVelocity,
+      budgetSignals: pipelineAssessment.scoring.breakdown.budgetSignals,
+      fitPrecision: pipelineAssessment.scoring.breakdown.fitPrecision,
       buyerType: intentClassification.buyerType,
       intentClass: intentClassification.intentClass,
       intentConfidence: intentClassification.confidence,
       rush12HourEligible: intentClassification.urgencySignals.immediate,
       painTags: intentClassification.painPoints,
       serviceTags: intentClassification.urgencySignals.budgetIndicators,
-      // UTM Attribution (Prisma camelCase field names map to snake_case columns)
+      status:
+        pipelineAssessment.proofPack.recommendedStatus === 'OUTREACH_READY'
+          ? 'OUTREACH_READY'
+          : 'REVIEW',
       utmSource: options.utmData?.utm_source,
       utmMedium: options.utmData?.utm_medium,
       utmCampaign: options.utmData?.utm_campaign,
       utmTerm: options.utmData?.utm_term,
       utmContent: options.utmData?.utm_content,
       meta: {
+        domain: pipelineAssessment.identity.domain,
+        companyName: pipelineAssessment.identity.companyName,
+        website: pipelineAssessment.identity.website,
+        triggerEvent: pipelineAssessment.triggerEvent,
+        whyNow: pipelineAssessment.whyNow,
+        discoveryGate: pipelineAssessment.discoveryGate,
+        qualityGate: pipelineAssessment.qualityGate,
+        scoring: pipelineAssessment.scoring,
+        outreach: pipelineAssessment.outreach,
+        proofPack: pipelineAssessment.proofPack,
         serpPosition: result.position ?? idx + 1,
         serpSource: result.source ?? (result.provider === 'apify' ? 'apify_google' : 'google'),
         gl,
@@ -185,10 +247,9 @@ export async function generateLeadsFromSearch(
     }
 
     try {
-      // Domain-level duplicate detection: check if another lead from the same
-      // domain already exists for this org (cross-run dedup)
       let isDuplicate = false
       let duplicateOfLeadId: string | undefined
+
       try {
         const domain = new URL(canonicalUrl).hostname.replace(/^www\./, '')
         const existingDomainLead = await prisma.lead.findFirst({
@@ -200,12 +261,13 @@ export async function generateLeadsFromSearch(
           select: { id: true },
           orderBy: { score: 'desc' },
         })
+
         if (existingDomainLead) {
           isDuplicate = true
           duplicateOfLeadId = existingDomainLead.id
         }
       } catch {
-        // URL parse failed — not a duplicate detection error, continue
+        // Ignore duplicate lookup URL parsing issues and continue.
       }
 
       await prisma.lead.upsert({
@@ -221,6 +283,7 @@ export async function generateLeadsFromSearch(
           urgencyVelocity: leadPayload.urgencyVelocity,
           budgetSignals: leadPayload.budgetSignals,
           fitPrecision: leadPayload.fitPrecision,
+          status: leadPayload.status,
           snippet: leadPayload.snippet,
           title: leadPayload.title,
           runId: leadPayload.runId,
@@ -241,16 +304,22 @@ export async function generateLeadsFromSearch(
           duplicateOfLeadId: duplicateOfLeadId ?? null,
         },
       })
+
       created.push(leadPayload)
     } catch (error) {
       console.error('Lead upsert failed', error)
     }
   }
 
+  console.log(
+    `[DEKES] Lead generation complete: ${created.length} inserted, ${rejectedCount} rejected out of ${searchResults.length} results`,
+  )
+
   return {
     requested: searchResults.length,
-    attempted: searchResults.length,
+    attempted: searchResults.length - rejectedCount,
     inserted: created.length,
+    rejected: rejectedCount,
     leads: created,
   }
 }

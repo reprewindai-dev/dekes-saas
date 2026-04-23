@@ -12,6 +12,7 @@ import {
 import { prisma } from '@/lib/db'
 import { generateLeadsFromSearch } from '@/lib/leads/generator'
 import { getQstashClient } from '@/lib/upstash/qstash'
+import { emitDksWorkload, dksWorkloadEmitter } from '@/lib/integrations/dks-workload-emitter'
 
 const runSchema = z.object({
   queryId: z.string().min(1).optional(),
@@ -108,6 +109,49 @@ export async function POST(request: Request) {
     } catch (err) {
       console.warn('[leads/run] ECOBE routing unavailable — proceeding without routing decision', {
         organizationId,
+        runId: run.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+
+    // ── 3.5. CO₂Router workload emission for carbon command tracking ─────────────
+    let co2routerCommandId: string | undefined
+    try {
+      const co2routerResponse = await emitDksWorkload(
+        'lead_generation_batch',
+        organizationId,
+        {
+          leadId: undefined, // Will be created after lead generation
+          queryId: ensuredQuery.id,
+          runId: run.id,
+          userId: session.user.id,
+          signalType: 'lead_generation',
+          estimatedQueries: data.estimatedResults,
+          durationMinutes: Math.ceil(data.estimatedResults / 100) * 2,
+        },
+        {
+          priority: 'medium',
+          carbonPriority: 'high', // DKS workloads prioritize carbon savings
+          candidateRegions: data.regions,
+          maxLatencyMs: data.delayToleranceMinutes * 60 * 1000,
+        }
+      )
+      
+      if (co2routerResponse.success && co2routerResponse.commandId) {
+        co2routerCommandId = co2routerResponse.commandId
+        console.log('[leads/run] CO₂Router workload emitted successfully', {
+          runId: run.id,
+          commandId: co2routerCommandId,
+          selectedRegion: co2routerResponse.recommendation?.selectedRegion,
+        })
+      } else {
+        console.warn('[leads/run] CO₂Router workload emission failed', {
+          runId: run.id,
+          error: co2routerResponse.error,
+        })
+      }
+    } catch (err) {
+      console.warn('[leads/run] CO₂Router integration error — proceeding without carbon command tracking', {
         runId: run.id,
         error: err instanceof Error ? err.message : String(err),
       })
@@ -260,6 +304,52 @@ export async function POST(request: Request) {
         error: err instanceof Error ? err.message : String(err),
       }),
     )
+
+    // ── 9.5. Report outcome to CO₂Router (best-effort) ─────────────────────────
+    if (co2routerCommandId) {
+      try {
+        await dksWorkloadEmitter.reportOutcome({
+          commandId: co2routerCommandId,
+          sourceApp: 'dks',
+          execution: {
+            actualRegion: executionRegion,
+            actualStartAt: new Date(runStart).toISOString(),
+            actualEndAt: new Date().toISOString(),
+            actualLatencyMs: durationMinutes * 60 * 1000,
+            actualCpuHours: actualEnergyKwh, // Approximate CPU hours from energy
+          },
+          emissions: {
+            actualCarbonIntensity: carbonIntensity ?? fallbackCarbonIntensity,
+            actualEmissionsKgCo2e: actualCO2 / 1000, // Convert g to kg
+            source: 'estimated', // DKS provides estimates
+          },
+          status: {
+            completed: true,
+            slaMet: durationMinutes <= (data.delayToleranceMinutes || 60),
+            fallbackTriggered: !routing,
+          },
+          metadata: {
+            organizationId,
+            queryId: ensuredQuery.id,
+            runId: run.id,
+            actualQueries: leadGeneration.requested,
+            actualSignals: leadGeneration.inserted,
+            organizationId,
+            workloadType: 'lead_generation_batch',
+          },
+        })
+        console.log('[leads/run] CO₂Router outcome reported successfully', {
+          commandId: co2routerCommandId,
+          actualCO2: actualCO2 / 1000,
+          region: executionRegion,
+        })
+      } catch (err) {
+        console.error('[leads/run] Failed to report CO₂Router outcome', {
+          commandId: co2routerCommandId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
 
     // ── 10. Post-run feedback to ECOBE routing API (best-effort) ─────────────
     if (routing?.decisionId) {

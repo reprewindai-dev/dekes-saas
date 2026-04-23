@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { validateSession } from '@/lib/auth/jwt'
+import { getSessionToken } from '@/lib/auth/get-session-token'
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const token = req.headers.get('authorization')?.replace('Bearer ', '')
+    const token = getSessionToken(req)
     const session = await validateSession(token || '')
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

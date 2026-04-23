@@ -1,183 +1,309 @@
-"use client"
+'use client'
 
-import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useMemo, useState } from 'react'
+import {
+  Activity,
+  ArrowRight,
+  BadgeCheck,
+  Clock3,
+  Filter,
+  Globe,
+  PlayCircle,
+  Radar,
+  SearchCheck,
+  ShieldCheck,
+  Sparkles,
+  Target,
+} from 'lucide-react'
 
 type DemoStage = 'idle' | 'running' | 'complete'
 
-const sampleSignals = [
+const pipeline = [
   {
-    title: 'Signal Stack',
-    value: 'Security leadership expansion + RFP issued',
-    detail: 'Validated via hiring feed + dark funnel chatter'
+    key: 'retrieve',
+    title: 'Retrieve raw search results',
+    detail: 'DEKES starts wide. Pages, snippets, hiring signals, content activity, and public traces all enter the first pass.',
   },
   {
-    title: 'Champion Contact',
-    value: 'Jordan Patel – VP Security',
-    detail: 'Email, LinkedIn, buying role, urgency score 94'
+    key: 'reject',
+    title: 'Hard reject junk',
+    detail: 'Directories, “top X” lists, generic platforms, and weak pages are removed before scoring starts.',
   },
   {
-    title: 'Recommended Action',
-    value: 'Trigger 4-touch outbound + LinkedIn voice drop',
-    detail: 'Auto-sync to Salesforce Intent Queue'
-  }
+    key: 'resolve',
+    title: 'Resolve real company',
+    detail: 'Everything collapses to one clean company identity per root domain.',
+  },
+  {
+    key: 'validate',
+    title: 'Require multiple strong signals',
+    detail: 'No company survives without recent, strong, buyer-relevant signals that can be packaged as proof.',
+  },
+  {
+    key: 'score',
+    title: 'Package whyNow + outreach',
+    detail: 'Each visible buyer gets a whyBuying summary, whyNow context, outreach angle, timing window, and status.',
+  },
 ]
 
-const sampleDeliverables = [
+const resultCards = [
+  {
+    company: 'North Ridge Payments',
+    status: 'SEND_NOW',
+    whyNow: 'Security hiring, vendor comparison activity, and buying committee movement were all detected this week.',
+    outreach: 'Lead with migration-risk reduction and procurement acceleration.',
+    confidence: 'high',
+  },
+  {
+    company: 'HarborStack Cloud',
+    status: 'QUEUE',
+    whyNow: 'Pressure is building, but the strongest motion lines up with next week’s launch window.',
+    outreach: 'Anchor the message on cost pressure and rollout timing.',
+    confidence: 'medium',
+  },
+  {
+    company: 'AtlasGrid Ops',
+    status: 'HOLD',
+    whyNow: 'Interesting activity, but not enough proof survived validation yet.',
+    outreach: 'Continue monitoring until a second strong signal appears.',
+    confidence: 'low',
+  },
+]
+
+const deliverables = [
   { label: 'Qualified buyers', value: '12 accounts' },
-  { label: 'Intent accuracy', value: '91%' },
-  { label: 'Pipeline lift projection', value: '3.1x in 60 days' },
-  { label: 'Compliance packet', value: 'SOC2 + audit log ready' }
+  { label: 'Noise rejected', value: '73 pages' },
+  { label: 'Avg proof strength', value: '89/100' },
+  { label: 'Projected pipeline lift', value: '3.1x' },
 ]
 
 export default function DemoPage() {
   const [stage, setStage] = useState<DemoStage>('idle')
-  const [elapsed, setElapsed] = useState(0)
+  const [stepIndex, setStepIndex] = useState(0)
 
-  const loadingCopy = useMemo(() => {
-    if (elapsed < 2) return 'Calibrating signal capture grid…'
-    if (elapsed < 4) return 'Validating multi-signal intent packets…'
-    return 'Routing prioritized buyers into your outbound motion…'
-  }, [elapsed])
+  const stageLabel = useMemo(() => {
+    if (stage === 'idle') return 'Ready'
+    if (stage === 'running') return `Running step ${stepIndex + 1}/${pipeline.length}`
+    return 'Complete'
+  }, [stage, stepIndex])
 
   function launchDemo() {
     setStage('running')
-    setElapsed(0)
-    const steps = [500, 1300, 800]
-    let idx = 0
+    setStepIndex(0)
 
-    const advance = () => {
-      setElapsed((prev) => prev + 1)
-      if (idx < steps.length) {
-        const current = idx
-        idx += 1
-        setTimeout(() => {
-          if (current === steps.length - 1) {
-            setStage('complete')
-          } else {
-            advance()
-          }
-        }, steps[current])
-      }
-    }
-
-    advance()
+    pipeline.forEach((_, index) => {
+      window.setTimeout(() => {
+        setStepIndex(index)
+        if (index === pipeline.length - 1) {
+          window.setTimeout(() => setStage('complete'), 700)
+        }
+      }, index * 950)
+    })
   }
 
   return (
-    <div className="min-h-screen bg-[#030712] text-[#E6EDF7]">
-      <header className="border-b border-[#101A2E] bg-[#050A16]/80 backdrop-blur-xl">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="text-lg font-semibold tracking-wide">DEKES</Link>
-          <div className="flex items-center gap-3">
-            <Link href="/auth/login" className="text-sm text-[#9FB3C8] hover:text-white transition">
-              Login
+    <div className="dekes-shell min-h-screen px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <header className="mb-10 flex flex-col gap-5 rounded-[32px] border border-white/8 bg-[#07111f]/82 px-6 py-5 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="dekes-panel flex h-12 w-12 items-center justify-center rounded-2xl">
+              <Radar className="h-5 w-5 text-cyan-300" />
+            </div>
+            <div>
+              <p className="font-[var(--font-display)] text-xl font-semibold tracking-[0.16em] text-white">
+                DEKES
+              </p>
+              <p className="text-xs uppercase tracking-[0.28em] text-[var(--dekes-subtle)]">
+                Live buyer-intelligence simulation
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href="/" className="rounded-full border border-white/12 bg-white/5 px-4 py-2 text-sm text-white">
+              Back to overview
             </Link>
             <Link
               href="/auth/signup"
-              className="px-4 py-2 bg-[#00D1C7] text-[#041022] rounded-xl font-semibold text-sm"
+              className="rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 px-5 py-2.5 text-sm font-semibold text-slate-950"
             >
-              Start Trial
+              Start Free Trial
             </Link>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
-        <section className="text-center space-y-4">
-          <p className="text-sm uppercase tracking-[0.3em] text-[#00D1C7]">Live sandbox</p>
-          <h1 className="text-4xl md:text-5xl font-bold">Launch a lead intelligence run without logging in.</h1>
-          <p className="text-lg text-[#9FB3C8] max-w-3xl mx-auto">
-            This production-grade sandbox mirrors the exact workflow revenue teams use. We anonymized the data but
-            kept the scoring, routing, and governance layers intact so you can see how DEKES performs in under 60
-            seconds.
-          </p>
-        </section>
+        <section className="grid gap-8 xl:grid-cols-[0.88fr_1.12fr]">
+          <div className="space-y-6">
+            <div className="dekes-pill text-sm">
+              <span className="dekes-dot dekes-pulse" />
+              Public demo of the real pipeline logic, not a static mock.
+            </div>
 
-        <section className="grid lg:grid-cols-2 gap-8">
-          <div className="p-6 rounded-3xl border border-[#1F2A3D] bg-[#050A16]/80 space-y-6">
             <div>
-              <label className="block text-sm font-medium text-[#9FB3C8] mb-2">Ideal buyer narrative</label>
-              <textarea
-                defaultValue="Security orgs rolling out zero-trust across US+EU with public announcements in last 30 days"
-                className="w-full rounded-2xl bg-[#0B1424] border border-[#1F2A3D] text-white p-4"
-                readOnly
-              />
+              <h1 className="font-[var(--font-display)] text-4xl font-semibold text-white md:text-6xl">
+                Watch DEKES move
+                <span className="dekes-gradient-text block">from raw search to real buyer.</span>
+              </h1>
+              <p className="mt-5 max-w-2xl text-lg leading-8 text-[var(--dekes-muted)]">
+                This demo mirrors the signed runtime contract: retrieve broadly, reject junk, resolve
+                real entities, validate strong signals, and only surface actionable buyers with timing
+                and outreach context.
+              </p>
             </div>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-[#9FB3C8] mb-2">Projected leads</label>
-                <input value="120" readOnly className="w-full rounded-xl bg-[#0B1424] border border-[#1F2A3D] text-white px-4 py-3" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-[#9FB3C8] mb-2">Carbon budget</label>
-                <input value="10,000 gCO₂" readOnly className="w-full rounded-xl bg-[#0B1424] border border-[#1F2A3D] text-white px-4 py-3" />
-              </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {deliverables.map((item) => (
+                <div key={item.label} className="dekes-panel rounded-[24px] p-5">
+                  <p className="text-xs uppercase tracking-[0.22em] text-[var(--dekes-subtle)]">
+                    {item.label}
+                  </p>
+                  <p className="mt-3 font-[var(--font-display)] text-3xl font-semibold text-white">
+                    {item.value}
+                  </p>
+                </div>
+              ))}
             </div>
+
             <button
+              type="button"
               onClick={launchDemo}
               disabled={stage === 'running'}
-              className="w-full py-4 rounded-2xl font-semibold text-lg transition flex items-center justify-center gap-2
-              bg-[#00D1C7] text-[#041022] disabled:bg-[#1F2A3D] disabled:text-[#9FB3C8]"
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 px-6 py-3.5 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {stage === 'running' ? 'Running live sandbox…' : 'Launch live demo run'}
+              {stage === 'running' ? 'Running live demo...' : 'Launch live demo'}
+              <PlayCircle className="h-5 w-5" />
             </button>
-            {stage === 'running' && (
-              <div className="text-sm text-[#9FB3C8] text-center italic">{loadingCopy}</div>
-            )}
           </div>
 
-          <div className="p-6 rounded-3xl border border-[#1F2A3D] bg-[#090F1E]/80 space-y-6 min-h-[360px]">
-            {stage === 'idle' && (
-              <div className="h-full flex flex-col items-center justify-center text-center text-[#9FB3C8] space-y-3">
-                <p>Trigger the sandbox to see qualified buyers, proof packets, and routing recommendations.</p>
-                <p className="text-sm">No install. No forms. Real infrastructure.</p>
-              </div>
-            )}
-
-            {stage !== 'idle' && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap gap-4">
-                  {sampleDeliverables.map((metric) => (
-                    <div key={metric.label} className="flex-1 min-w-[140px] p-4 rounded-2xl bg-[#0B1424] border border-[#1F2A3D]">
-                      <div className="text-xs text-[#72819A] uppercase tracking-wide">{metric.label}</div>
-                      <div className="text-xl font-semibold mt-1">{metric.value}</div>
-                    </div>
-                  ))}
+          <div className="space-y-6">
+            <div className="dekes-panel-strong dekes-ring rounded-[32px] p-6">
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.26em] text-[var(--dekes-subtle)]">
+                    Runtime pipeline
+                  </p>
+                  <h2 className="mt-2 font-[var(--font-display)] text-2xl font-semibold text-white">
+                    {stageLabel}
+                  </h2>
                 </div>
-
-                <div className="space-y-3">
-                  {sampleSignals.map((signal) => (
-                    <div key={signal.title} className="p-4 rounded-2xl bg-[#050A16] border border-[#1F2A3D]">
-                      <div className="text-sm text-[#72819A] uppercase tracking-wide">{signal.title}</div>
-                      <div className="text-lg font-semibold text-white mt-1">{signal.value}</div>
-                      <div className="text-sm text-[#9FB3C8]">{signal.detail}</div>
-                    </div>
-                  ))}
+                <div className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
+                  Live
                 </div>
               </div>
-            )}
+
+              <div className="grid gap-3">
+                {pipeline.map((item, index) => {
+                  const active = stage !== 'idle' && index <= stepIndex
+                  const current = stage === 'running' && index === stepIndex
+                  return (
+                    <div
+                      key={item.key}
+                      className={`rounded-[22px] border px-4 py-4 transition ${
+                        current
+                          ? 'border-cyan-400/30 bg-cyan-400/10'
+                          : active
+                            ? 'border-blue-400/20 bg-blue-500/8'
+                            : 'border-white/8 bg-white/[0.03]'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-white">{item.title}</p>
+                          <p className="mt-2 text-sm leading-6 text-[var(--dekes-muted)]">{item.detail}</p>
+                        </div>
+                        <span
+                          className={`mt-1 h-2.5 w-2.5 rounded-full ${
+                            current
+                              ? 'bg-cyan-300 shadow-[0_0_18px_rgba(0,209,199,0.6)]'
+                              : active
+                                ? 'bg-blue-300'
+                                : 'bg-white/15'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              {resultCards.map((card) => (
+                <div key={card.company} className="dekes-panel rounded-[24px] p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-white">{card.company}</p>
+                    <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-200">
+                      {card.status}
+                    </span>
+                  </div>
+                  <p className="mt-4 text-sm leading-6 text-[var(--dekes-muted)]">{card.whyNow}</p>
+                  <p className="mt-4 text-sm text-white">{card.outreach}</p>
+                  <div className="mt-5 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[var(--dekes-subtle)]">
+                    <ShieldCheck className="h-4 w-4 text-cyan-300" />
+                    {card.confidence} confidence
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
-        {stage === 'complete' && (
-          <section className="p-8 rounded-3xl border border-[#1F2A3D] bg-gradient-to-br from-[#050B17] to-[#030712] text-center space-y-6">
-            <h2 className="text-3xl font-bold">Ready to unlock the real pipeline?</h2>
-            <p className="text-lg text-[#9FB3C8]">
-              Create your account to run unlimited searches, invite your team, and sync buyers directly into Salesforce,
-              HubSpot, or webhooks with governance controls.
-            </p>
-            <div className="flex flex-col md:flex-row justify-center gap-4">
-              <Link href="/auth/signup" className="px-8 py-4 bg-[#00D1C7] text-[#041022] rounded-2xl text-lg font-semibold">
-                Start 14-day trial
-              </Link>
-              <Link href="/runs/new" className="px-8 py-4 border border-[#1F6BFF] text-white rounded-2xl text-lg font-semibold">
-                Log in & deploy
-              </Link>
-            </div>
-          </section>
-        )}
-      </main>
+        <section className="mt-10 grid gap-5 md:grid-cols-5">
+          <DemoSignalCard icon={SearchCheck} title="Discovery gate" detail="Eliminates weak entity matches before scoring." />
+          <DemoSignalCard icon={Filter} title="Junk rejection" detail="Suppresses listicles, directories, and platform noise." />
+          <DemoSignalCard icon={Target} title="Why now" detail="Shows the exact urgency window attached to the buyer." />
+          <DemoSignalCard icon={BadgeCheck} title="Proof pack" detail="Evidence, confidence, and trigger event in one view." />
+          <DemoSignalCard icon={Globe} title="Action status" detail="Only SEND_NOW, QUEUE, HOLD, or REJECTED." />
+        </section>
+
+        <section className="mt-10 rounded-[32px] border border-white/8 bg-[#07111f]/84 px-8 py-10 text-center backdrop-blur-xl">
+          <p className="text-sm uppercase tracking-[0.28em] text-cyan-300">What happens next</p>
+          <h2 className="mt-4 font-[var(--font-display)] text-4xl font-semibold text-white">
+            Turn the demo into your operating layer.
+          </h2>
+          <p className="mx-auto mt-4 max-w-3xl text-lg leading-8 text-[var(--dekes-muted)]">
+            Create an account to run live searches, score against your ICP, review proof packs, and hand
+            high-confidence buyers into your revenue motion.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
+            <Link
+              href="/auth/signup"
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 px-6 py-3.5 font-semibold text-slate-950"
+            >
+              Start 14-day trial
+              <ArrowRight className="h-5 w-5" />
+            </Link>
+            <Link
+              href="/runs/new"
+              className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-6 py-3.5 font-semibold text-white"
+            >
+              Go to runtime
+              <Activity className="h-5 w-5" />
+            </Link>
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+function DemoSignalCard({
+  icon: Icon,
+  title,
+  detail,
+}: {
+  icon: typeof SearchCheck
+  title: string
+  detail: string
+}) {
+  return (
+    <div className="dekes-panel rounded-[24px] p-5">
+      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-400/10 text-cyan-300">
+        <Icon className="h-5 w-5" />
+      </div>
+      <p className="mt-4 font-[var(--font-display)] text-xl font-semibold text-white">{title}</p>
+      <p className="mt-3 text-sm leading-6 text-[var(--dekes-muted)]">{detail}</p>
     </div>
   )
 }

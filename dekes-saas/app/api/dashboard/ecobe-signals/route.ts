@@ -1,12 +1,15 @@
 export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { prisma } from '@/lib/db'
 import { validateSession } from '@/lib/auth/jwt'
 
 export async function GET(req: NextRequest) {
   try {
-    const token = req.headers.get('authorization')?.replace('Bearer ', '')
+    const token =
+      req.headers.get('authorization')?.replace('Bearer ', '') ||
+      cookies().get('DEKES_SESSION')?.value
     const session = await validateSession(token || '')
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

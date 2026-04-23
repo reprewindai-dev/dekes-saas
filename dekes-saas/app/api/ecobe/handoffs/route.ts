@@ -2,17 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/db'
 import { validateSession } from '@/lib/auth/jwt'
+import { getSessionToken } from '@/lib/auth/get-session-token'
+
+export const dynamic = 'force-dynamic'
 
 export const dynamic = 'force-dynamic'
 
 const handoffsSchema = z.object({
-  page: z.string().optional().transform(Number).pipe(z.number().min(1).max(100)),
-  status: z.enum(['PENDING', 'SENT', 'ACCEPTED', 'FAILED', 'CONVERTED']).optional(),
+  page: z.string().nullable().optional().transform(v => (v ? Number(v) : 1)).pipe(z.number().min(1).max(100)),
+  status: z.enum(['PENDING', 'SENT', 'ACCEPTED', 'FAILED', 'CONVERTED']).nullable().optional().transform(v => v ?? undefined),
 })
 
 export async function GET(req: NextRequest) {
   try {
-    const token = req.headers.get('authorization')?.replace('Bearer ', '')
+    const token = getSessionToken(req)
     const session = await validateSession(token || '')
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

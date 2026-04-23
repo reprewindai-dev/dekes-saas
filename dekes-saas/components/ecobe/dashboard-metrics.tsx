@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { ArrowRight, TrendingUp, Users, Target, Zap, Activity } from 'lucide-react'
+import { cacheStrategies } from '../../lib/cache/cache-utils'
+import { DashboardGridSkeleton, PanelSkeleton } from '../ui/skeleton'
+import { ApiErrorBoundary } from '../error/error-boundary'
 
 interface EcobeStats {
   totalHandoffs: number
@@ -36,30 +39,63 @@ interface EcobeDashboardData {
 }
 
 export default function EcobeDashboardMetrics() {
+  return (
+    <ApiErrorBoundary>
+      <EcobeDashboardMetricsInner />
+    </ApiErrorBoundary>
+  )
+}
+
+function EcobeDashboardMetricsInner() {
   const [data, setData] = useState<EcobeDashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/dashboard/ecobe-stats', { credentials: 'include' })
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
-      .then(d => { if (d && d.stats) setData(d) })
-      .catch(console.error)
-      .finally(() => setLoading(false))
+    const fetchData = async () => {
+      try {
+        setError(null)
+        const result = await cacheStrategies.analytics('/api/dashboard/ecobe-stats', { 
+          credentials: 'include' 
+        }) as EcobeDashboardData | null
+        
+        if (result && result.stats) {
+          setData(result)
+        } else {
+          throw new Error('Invalid response format from ECOBE stats API')
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load ECOBE metrics'
+        setError(errorMessage)
+        console.error('ECOBE metrics fetch error:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
   }, [])
 
   if (loading) {
+    return <DashboardGridSkeleton items={4} />
+  }
+
+  if (error) {
     return (
-      <div className="grid md:grid-cols-4 gap-6 mb-12">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="p-6 bg-slate-900/50 border border-slate-800 rounded-xl animate-pulse">
-            <div className="h-4 bg-slate-700 rounded mb-4"></div>
-            <div className="h-8 bg-slate-700 rounded mb-2"></div>
-            <div className="h-3 bg-slate-700 rounded"></div>
-          </div>
-        ))}
+      <div className="bg-slate-900/50 border border-red-500/20 rounded-xl p-8 text-center">
+        <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h3 className="text-white font-semibold mb-2">Unable to Load ECOBE Metrics</h3>
+        <p className="text-slate-400 text-sm mb-4">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="px-4 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 rounded-lg text-cyan-400 text-sm transition-colors"
+        >
+          Try Again
+        </button>
       </div>
     )
   }
@@ -67,7 +103,7 @@ export default function EcobeDashboardMetrics() {
   if (!data) {
     return (
       <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-8 text-center">
-        <p className="text-slate-400">Unable to load ECOBE metrics</p>
+        <p className="text-slate-400">No ECOBE metrics data available</p>
       </div>
     )
   }

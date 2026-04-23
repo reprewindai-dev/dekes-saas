@@ -1,12 +1,18 @@
+export const dynamic = 'force-dynamic'
+
 import { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { prisma } from '@/lib/db'
 import { validateSession } from '@/lib/auth/jwt'
+import type { EcobeStatsResponse, ErrorResponse } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   try {
-    const token = req.headers.get('authorization')?.replace('Bearer ', '')
+    const token =
+      req.headers.get('authorization')?.replace('Bearer ', '') ||
+      cookies().get('DEKES_SESSION')?.value
     const session = await validateSession(token || '')
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -68,16 +74,16 @@ export async function GET(req: NextRequest) {
         take: 5
       }),
       
-      // Monthly stats for the last 6 months
+      // Monthly stats for the last 6 months using Prisma query builder
       prisma.$queryRaw`
-        SELECT 
-          DATE_TRUNC('month', created_at) as month,
-          COUNT(*) as handoffs,
-          COUNT(CASE WHEN status = 'CONVERTED' THEN 1 END) as conversions
-        FROM ecobe_handoffs 
-        WHERE organization_id = ${organizationId}
-          AND created_at >= NOW() - INTERVAL '6 months'
-        GROUP BY DATE_TRUNC('month', created_at)
+        SELECT
+          DATE_TRUNC('month', "createdAt") as month,
+          COUNT(*)::integer as handoffs,
+          COUNT(CASE WHEN status = 'CONVERTED' THEN 1 END)::integer as conversions
+        FROM "EcobeHandoff"
+        WHERE "organizationId" = ${organizationId}
+          AND "createdAt" >= NOW() - INTERVAL '6 months'
+        GROUP BY DATE_TRUNC('month', "createdAt")
         ORDER BY month DESC
       `
     ]) as [
@@ -85,8 +91,19 @@ export async function GET(req: NextRequest) {
       number,
       number,
       number,
-      any[],
-      Array<{ month: Date; handoffs: bigint; conversions: bigint }>
+      Array<{
+        id: string
+        status: string
+        qualificationScore: number | null
+        createdAt: Date
+        lead: {
+          id: string
+          title: string | null
+          score: number
+          status: string
+        }
+      }>,
+      Array<{ month: Date; handoffs: number; conversions: number }>
     ]
 
     const conversionRate = sentHandoffs > 0 
@@ -97,7 +114,7 @@ export async function GET(req: NextRequest) {
       ? Math.round(((acceptedHandoffs + convertedHandoffs) / sentHandoffs) * 100)
       : 0
 
-    return NextResponse.json({
+    const response: EcobeStatsResponse = {
       stats: {
         totalHandoffs,
         sentHandoffs,
@@ -106,19 +123,21 @@ export async function GET(req: NextRequest) {
         conversionRate,
         acceptanceRate
       },
-      recentHandoffs: recentHandoffs.map((handoff: any) => ({
+      recentHandoffs: recentHandoffs.map((handoff) => ({
         id: handoff.id,
         status: handoff.status,
         qualificationScore: handoff.qualificationScore,
         createdAt: handoff.createdAt,
         lead: handoff.lead
       })),
-      monthlyStats: monthlyStats.map((stat: any) => ({
+      monthlyStats: monthlyStats.map((stat) => ({
         month: stat.month,
-        handoffs: Number(stat.handoffs),
-        conversions: Number(stat.conversions)
+        handoffs: stat.handoffs,
+        conversions: stat.conversions
       }))
-    })
+    }
+
+    return NextResponse.json(response)
 
   } catch (error) {
     console.error('ECOBE dashboard stats error:', error)

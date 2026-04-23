@@ -6,6 +6,8 @@ import { prisma } from '@/lib/db'
 import { validateSession } from '@/lib/auth/jwt'
 import type { EcobeStatsResponse, ErrorResponse } from '@/types'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
     const token =

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import './globals.css'
 import { IBM_Plex_Sans, Space_Grotesk } from 'next/font/google'
 
 import { UTMCapture } from '@/components/utm/UTMCapture'

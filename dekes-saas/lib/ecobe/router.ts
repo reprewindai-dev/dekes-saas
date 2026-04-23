@@ -1,3 +1,4 @@
+const ECOBE_BASE = (process.env.ECOBE_API_BASE_URL || process.env.ECOBE_ENGINE_URL || 'https://api.ecobe.dev').replace(/\/+$/, '')
 import { validateRequest, EcobeRouteRequestSchema, EcobeCompleteRequestSchema } from '../validation/ecobe-schemas'
 
 const ECOBE_BASE = (
@@ -58,6 +59,7 @@ export type EcobeCompleteRequest = {
   status: 'success' | 'failed' | 'partial'
 }
 
+export async function ecobeRouteWorkload(req: EcobeRouteRequest): Promise<EcobeRouteResponse> {
 export async function ecobeRouteWorkload(req: unknown): Promise<EcobeRouteResponse> {
   const validatedRequest = validateRequest(EcobeRouteRequestSchema, req)
 
@@ -76,6 +78,7 @@ export async function ecobeRouteWorkload(req: unknown): Promise<EcobeRouteRespon
   return (await res.json()) as EcobeRouteResponse
 }
 
+export async function ecobeCompleteWorkload(req: EcobeCompleteRequest): Promise<void> {
 export async function ecobeCompleteWorkload(req: unknown): Promise<void> {
   const validatedRequest = validateRequest(EcobeCompleteRequestSchema, req)
 

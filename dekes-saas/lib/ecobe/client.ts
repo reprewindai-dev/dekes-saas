@@ -10,6 +10,7 @@ import { isValidEcobeResponse, isValidEcobeStats, safeTypeAssertion } from '../u
 import { createApiError, createNetworkError, classifyError, logError } from '../error/error-handler'
 
 const LEGACY_DEFAULT_BASE = 'http://localhost:3000'
+const MODERN_DEFAULT_BASE = 'https://api.ecobe.dev'
 const MODERN_DEFAULT_BASE = 'https://ecobe-engineclaude-production.up.railway.app'
 const INTEGRATION_BASE_PATH = '/api/v1/integrations/dekes'
 
@@ -104,6 +105,19 @@ function getLegacyBaseUrl(): string {
   return normalizeBaseUrl(
     process.env.ECOBE_ENGINE_BASE_URL || process.env.ECOBE_ENGINE_URL || LEGACY_DEFAULT_BASE
   )
+}
+
+function getSharedApiKey(): string {
+  const key =
+    process.env.DEKES_API_KEY ||
+    process.env.ECOBE_API_KEY ||
+    process.env.ECOBE_ENGINE_API_KEY
+
+  if (!key) {
+    throw new Error('Missing DEKES_API_KEY, ECOBE_API_KEY, or ECOBE_ENGINE_API_KEY')
+  }
+
+  return key
 }
 
 function getSharedApiKey(): string {
@@ -273,6 +287,21 @@ export async function ecobeFetchAnalytics(): Promise<EcobeAnalyticsResponse> {
   return json as EcobeAnalyticsResponse
 }
 
+export async function createEcobeProspect(payload: EcobeProspectPayload) {
+  return callModernApi<{ id: string; status: string; externalLeadId?: string }>(`${INTEGRATION_BASE_PATH}/prospects`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function createEcobeTenant(payload: EcobeTenantPayload) {
+  return callModernApi<{ id: string; status: string; externalOrgId?: string }>(`${INTEGRATION_BASE_PATH}/tenants`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function triggerEcobeDemo(payload: EcobeDemoPayload) {
 export async function createEcobeProspect(payload: unknown) {
   const validatedPayload = validateRequest(EcobeProspectPayloadSchema, payload)
 
